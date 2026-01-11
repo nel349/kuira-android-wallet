@@ -21,3 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Kuira"
 include(":app")
+include(":core:crypto")
+include(":core:testing")
