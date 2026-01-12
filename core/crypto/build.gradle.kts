@@ -39,6 +39,11 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // Crypto libraries
+    // implementation(libs.kotlin.bip39)       // NOT BIP-39 compliant for seed derivation
+    implementation(libs.bitcoinj.core)      // BitcoinJ - Java Bitcoin library (BIP-39 compliant)
+    implementation(libs.secp256k1.kmp)      // secp256k1 curve operations
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

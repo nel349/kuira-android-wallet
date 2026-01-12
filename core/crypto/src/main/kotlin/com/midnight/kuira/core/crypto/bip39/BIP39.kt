@@ -1,23 +1,58 @@
+// This file is part of Kuira Wallet.
+// Copyright (C) 2025 Kuira Wallet
+// SPDX-License-Identifier: Apache-2.0
+
 package com.midnight.kuira.core.crypto.bip39
 
 /**
- * BIP-39 implementation for mnemonic generation and seed derivation.
+ * Convenience object for BIP-39 mnemonic operations.
  *
- * Reference: https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
+ * This is a facade that delegates to a [MnemonicService] implementation.
+ * Default implementation uses BitcoinJ, but can be swapped if needed
+ * for compatibility with different wallet implementations.
  *
- * Phase 1 Implementation:
- * - Generate 24-word mnemonic phrases
- * - Derive seed from mnemonic + optional passphrase
- * - Validate mnemonics
+ * **Reference:** https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
+ *
+ * **Usage:**
+ * ```kotlin
+ * // Generate 24-word mnemonic
+ * val mnemonic = BIP39.generateMnemonic()
+ *
+ * // Convert to seed
+ * val seed = BIP39.mnemonicToSeed(mnemonic)
+ *
+ * // Validate mnemonic
+ * val isValid = BIP39.validateMnemonic(mnemonic)
+ * ```
  */
 object BIP39 {
+
     /**
-     * Generates a 24-word mnemonic phrase from 256 bits of entropy.
-     *
-     * @return A 24-word mnemonic phrase separated by spaces
+     * The underlying service implementation.
+     * Can be swapped for testing or compatibility reasons.
      */
-    fun generateMnemonic(): String {
-        TODO("Phase 1: Implement BIP-39 mnemonic generation")
+    @Volatile
+    private var service: MnemonicService = BitcoinJMnemonicService()
+
+    /**
+     * Sets a custom [MnemonicService] implementation.
+     * Useful for testing or supporting alternative wallet formats.
+     *
+     * @param customService The service implementation to use
+     */
+    fun setService(customService: MnemonicService) {
+        service = customService
+    }
+
+    /**
+     * Generates a random BIP-39 mnemonic phrase.
+     *
+     * @param wordCount Number of words (12, 15, 18, 21, or 24). Default: 24
+     * @return Space-separated mnemonic phrase
+     * @throws IllegalArgumentException if wordCount is invalid
+     */
+    fun generateMnemonic(wordCount: Int = 24): String {
+        return service.generateMnemonic(wordCount)
     }
 
     /**
@@ -31,7 +66,7 @@ object BIP39 {
      * @throws IllegalArgumentException if mnemonic is invalid
      */
     fun mnemonicToSeed(mnemonic: String, passphrase: String = ""): ByteArray {
-        TODO("Phase 1: Implement seed derivation from mnemonic")
+        return service.mnemonicToSeed(mnemonic, passphrase)
     }
 
     /**
@@ -46,6 +81,6 @@ object BIP39 {
      * @return true if valid, false otherwise
      */
     fun validateMnemonic(mnemonic: String): Boolean {
-        TODO("Phase 1: Implement mnemonic validation")
+        return service.validateMnemonic(mnemonic)
     }
 }

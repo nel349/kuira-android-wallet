@@ -8,7 +8,8 @@ package com.midnight.kuira.core.testing
 object TestFixtures {
     /**
      * Standard BIP-39 test mnemonic (24 words)
-     * From BIP-39 spec: https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
+     * From official Trezor test vectors: https://github.com/trezor/python-mnemonic/blob/master/vectors.json
+     * Entropy: all zeros (0x0000...0000)
      */
     const val TEST_MNEMONIC_24_WORDS =
         "abandon abandon abandon abandon abandon abandon abandon abandon " +
@@ -16,10 +17,18 @@ object TestFixtures {
         "abandon abandon abandon abandon abandon abandon abandon art"
 
     /**
-     * Expected seed for TEST_MNEMONIC_24_WORDS with empty passphrase
+     * Expected seed for TEST_MNEMONIC_24_WORDS with passphrase "TREZOR"
+     * (Official Trezor test vectors use "TREZOR" passphrase for all vectors)
      */
-    const val EXPECTED_SEED_HEX =
+    const val EXPECTED_SEED_TREZOR_PASSPHRASE =
         "bda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd3097170af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8"
+
+    /**
+     * Expected seed for TEST_MNEMONIC_24_WORDS with empty passphrase ("")
+     * (Most wallets use empty passphrase by default)
+     */
+    const val EXPECTED_SEED_EMPTY_PASSPHRASE =
+        "408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf705489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840"
 
     /**
      * Placeholder test address format (Bech32m for Midnight)

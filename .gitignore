@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+core/crypto/build/*
+core/testing/build/*
+.kotlin/
