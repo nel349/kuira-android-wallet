@@ -24,24 +24,40 @@ package com.midnight.kuira.core.crypto.bip39
  * // Validate mnemonic
  * val isValid = BIP39.validateMnemonic(mnemonic)
  * ```
+ *
+ * **Thread Safety:**
+ * All methods are thread-safe. The service can be swapped at runtime using [setService],
+ * but this should only be done during initialization or testing, never in production code.
  */
 object BIP39 {
 
     /**
      * The underlying service implementation.
-     * Can be swapped for testing or compatibility reasons.
+     * Thread-safe via synchronized getter/setter.
      */
     @Volatile
-    private var service: MnemonicService = BitcoinJMnemonicService()
+    private var _service: MnemonicService = BitcoinJMnemonicService()
+
+    /**
+     * Thread-safe access to the current service implementation.
+     */
+    private val service: MnemonicService
+        @Synchronized get() = _service
 
     /**
      * Sets a custom [MnemonicService] implementation.
-     * Useful for testing or supporting alternative wallet formats.
+     *
+     * **Warning:** This method is intended for testing and should not be called
+     * in production code after initialization. Swapping the service while operations
+     * are in progress may lead to inconsistent behavior.
+     *
+     * **Thread Safety:** This method is synchronized and thread-safe.
      *
      * @param customService The service implementation to use
      */
+    @Synchronized
     fun setService(customService: MnemonicService) {
-        service = customService
+        _service = customService
     }
 
     /**
