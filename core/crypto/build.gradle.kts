@@ -44,6 +44,9 @@ dependencies {
     implementation(libs.bitcoinj.core)      // BitcoinJ - Java Bitcoin library (BIP-39 compliant)
     implementation(libs.secp256k1.kmp)      // secp256k1 curve operations
 
+    // Annotations for thread safety documentation
+    compileOnly("com.google.code.findbugs:jsr305:3.0.2")
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

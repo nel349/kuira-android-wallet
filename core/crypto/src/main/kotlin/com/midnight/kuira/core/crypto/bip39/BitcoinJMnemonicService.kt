@@ -68,12 +68,20 @@ class BitcoinJMnemonicService : MnemonicService {
             "Invalid mnemonic phrase"
         }
 
+        require(passphrase.length <= MAX_PASSPHRASE_LENGTH) {
+            "Passphrase too long (max $MAX_PASSPHRASE_LENGTH characters). " +
+                    "Got ${passphrase.length} characters."
+        }
+
         // Convert string to List<String> and normalize whitespace
         val words = mnemonic.trim().split(WHITESPACE_REGEX)
 
         // Convert mnemonic to seed using BIP-39 standard
         // PBKDF2-HMAC-SHA512 with 2048 iterations
         // BitcoinJ's toSeed is a static method
+        //
+        // Note: BitcoinJ internally copies the words list. We cannot wipe
+        // BitcoinJ's internal copy, but the caller should wipe the seed after use.
         return MnemonicCode.toSeed(words, passphrase)
     }
 
@@ -109,6 +117,16 @@ class BitcoinJMnemonicService : MnemonicService {
          * - 24 words = 256 bits (32 bytes)
          */
         private val VALID_WORD_COUNTS = setOf(12, 15, 18, 21, 24)
+
+        /**
+         * Maximum allowed passphrase length (256 characters).
+         *
+         * While BIP-39 technically allows any passphrase length, extremely long
+         * passphrases can cause performance issues with PBKDF2 (2048 iterations).
+         * 256 characters is more than sufficient for strong passphrases while
+         * preventing potential DOS attacks.
+         */
+        private const val MAX_PASSPHRASE_LENGTH = 256
 
         /**
          * Shared SecureRandom instance for generating entropy.

@@ -8,8 +8,7 @@ package com.midnight.kuira.core.crypto.bip39
  * Convenience object for BIP-39 mnemonic operations.
  *
  * This is a facade that delegates to a [MnemonicService] implementation.
- * Default implementation uses BitcoinJ, but can be swapped if needed
- * for compatibility with different wallet implementations.
+ * Uses BitcoinJ implementation which is BIP-39 compliant and battle-tested.
  *
  * **Reference:** https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
  *
@@ -18,47 +17,32 @@ package com.midnight.kuira.core.crypto.bip39
  * // Generate 24-word mnemonic
  * val mnemonic = BIP39.generateMnemonic()
  *
- * // Convert to seed
+ * // Convert to seed (CRITICAL: wipe seed after use!)
  * val seed = BIP39.mnemonicToSeed(mnemonic)
+ * try {
+ *     // Use seed...
+ * } finally {
+ *     Arrays.fill(seed, 0.toByte())
+ * }
  *
  * // Validate mnemonic
  * val isValid = BIP39.validateMnemonic(mnemonic)
  * ```
  *
  * **Thread Safety:**
- * All methods are thread-safe. The service can be swapped at runtime using [setService],
- * but this should only be done during initialization or testing, never in production code.
+ * All methods are thread-safe. The service implementation is immutable.
+ *
+ * **Testing:**
+ * For testing with custom implementations, use constructor injection in your
+ * components rather than relying on this global object.
  */
 object BIP39 {
 
     /**
      * The underlying service implementation.
-     * Thread-safe via synchronized getter/setter.
+     * Immutable for thread safety and consistency.
      */
-    @Volatile
-    private var _service: MnemonicService = BitcoinJMnemonicService()
-
-    /**
-     * Thread-safe access to the current service implementation.
-     */
-    private val service: MnemonicService
-        @Synchronized get() = _service
-
-    /**
-     * Sets a custom [MnemonicService] implementation.
-     *
-     * **Warning:** This method is intended for testing and should not be called
-     * in production code after initialization. Swapping the service while operations
-     * are in progress may lead to inconsistent behavior.
-     *
-     * **Thread Safety:** This method is synchronized and thread-safe.
-     *
-     * @param customService The service implementation to use
-     */
-    @Synchronized
-    fun setService(customService: MnemonicService) {
-        _service = customService
-    }
+    private val service: MnemonicService = BitcoinJMnemonicService()
 
     /**
      * Generates a random BIP-39 mnemonic phrase.
