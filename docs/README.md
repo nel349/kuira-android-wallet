@@ -1,49 +1,59 @@
 # Documentation Structure
 
-**Rule:** ONE living document per feature. Update it, don't create new versions.
+**Rule:** ONE living document per topic. Update it, don't create new versions.
 
 ---
 
-## Current Documentation
+## Sources of Truth
 
-| Document | Status | Purpose |
-|----------|--------|---------|
-| **PLAN.md** | ✅ **CURRENT** | Master plan (6 phases, 80-120 hours) |
-| **PROGRESS.md** | ✅ **CURRENT** | Current progress tracking |
-| **SHIELDED_KEYS.md** | ✅ **CURRENT** | Shielded key derivation implementation |
+### 📋 Core Docs (Always Current)
 
-**Read order:** PLAN.md (what we're building) → PROGRESS.md (where we are) → Feature docs (how it works)
+| Document | Purpose |
+|----------|---------|
+| **PLAN.md** | Master plan (what we're building - 6 phases, 80-120h) |
+| **PROGRESS.md** | Status tracker (where we are, hours invested) |
+
+### 🔧 Component Docs (One Per Feature)
+
+| Document | Status | Component |
+|----------|--------|-----------|
+| **SHIELDED_KEYS.md** | ⏳ Step 1 done | Shielded key derivation (JNI FFI to Rust) |
+
+**As we build:** Create new component docs (e.g., `UNSHIELDED_TRANSACTIONS.md`, `INDEXER.md`)
+
+---
+
+## Reading Order
+
+1. **PLAN.md** → Understand what we're building
+2. **PROGRESS.md** → See where we are
+3. **Component docs** → Deep dive on specific features
+
+---
+
+## Rules
+
+### ✅ DO
+- Update existing docs when status changes
+- Keep component docs < 200 lines
+- Add "Last Updated: YYYY-MM-DD" at top
+- Create new component doc when starting new feature
+
+### ❌ DON'T
+- Create versioned docs (`SHIELDED_KEYS_V2.md` ❌)
+- Create review docs (`CODE_REVIEW.md` ❌) - add findings to component doc
+- Create phase docs (`PHASE_2B.md` ❌) - update component doc instead
+- Keep outdated docs - archive or delete
+
+### When to Create New Doc
+**Only for new components:**
+- ✅ `SHIELDED_KEYS.md` - New component
+- ✅ `INDEXER.md` - New component
+- ❌ `SHIELDED_KEYS_PHASE_2.md` - Update existing
+- ❌ `SHIELDED_KEYS_REVIEW.md` - Update existing
 
 ---
 
 ## Archive
 
-Old docs are in `archive/` - they're outdated. Don't read them.
-
----
-
-## Convention
-
-### ✅ DO:
-- **Update existing docs** when status changes
-- Keep docs < 200 lines (concise)
-- Put "Last Updated: YYYY-MM-DD" at top
-- Use status badges (✅ Complete, ⏳ In Progress, ❌ Blocked)
-
-### ❌ DON'T:
-- Create "Phase X" docs (update the main doc instead)
-- Create "Review" docs (add findings to main doc)
-- Create "Plan" docs (use GitHub issues or TODOs instead)
-- Keep outdated docs (archive or delete)
-
----
-
-## When to Create New Docs
-
-**Only when starting a completely new feature.**
-
-Example:
-- ✅ `SHIELDED_KEYS.md` (new feature)
-- ✅ `UNSHIELDED_ADDRESSES.md` (different feature)
-- ❌ `SHIELDED_KEYS_PHASE_2.md` (update existing instead)
-- ❌ `SHIELDED_KEYS_REVIEW.md` (update existing instead)
+`archive/` contains outdated docs from early development. Ignore them.

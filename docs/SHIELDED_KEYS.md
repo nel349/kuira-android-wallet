@@ -1,19 +1,19 @@
 # Shielded Key Derivation Implementation
 
-**Status:** ✅ Phase 2A Complete (Kotlin FFI wrapper) | ⏳ Phase 2B Next (JNI + NDK build)
+**Status:** ✅ Step 1 Complete (Kotlin FFI wrapper) | ⏳ Step 2 Next (JNI + NDK build)
 **Last Updated:** 2026-01-13
 
 ---
 
 ## Current Status
 
-### ✅ Phase 2A Complete: Kotlin FFI Wrapper (3 hours)
+### ✅ Step 1 Complete: Kotlin FFI Wrapper (3 hours)
 - **Production code:** 3 files, 350 LOC
 - **Tests:** 44 tests (28 unit + 16 Android)
 - **All unit tests passing:** ✅
 - **Code review:** ✅ 1 doc bug fixed, implementation clean
 
-### ⏳ Phase 2B Next: JNI C Glue + Android Build (7-11 hours)
+### ⏳ Step 2 Next: JNI C Glue + Android Build (7-11 hours)
 - [ ] Write JNI C code (~50 lines)
 - [ ] Set up NDK cross-compilation
 - [ ] Build for ARM64, ARM32, x86_64, x86
@@ -24,7 +24,7 @@
 
 ## Implementation
 
-### Files Created (Phase 2A)
+### Files Created (Step 1)
 ```
 core/crypto/src/main/kotlin/.../shielded/
 ├── ShieldedKeys.kt              # Data class (coin_pk, enc_pk)
@@ -37,8 +37,8 @@ core/crypto/src/test/kotlin/.../shielded/
 └── ShieldedKeyDeriverTest.kt    # 7 unit tests
 
 core/crypto/src/androidTest/kotlin/.../shielded/
-├── ShieldedKeyDeriverIntegrationTest.kt    # 10 Android tests (skipped until Phase 2B)
-└── HDWalletShieldedIntegrationTest.kt      # 6 Android tests (skipped until Phase 2B)
+├── ShieldedKeyDeriverIntegrationTest.kt    # 10 Android tests (skipped until Step 2)
+└── HDWalletShieldedIntegrationTest.kt      # 6 Android tests (skipped until Step 2)
 ```
 
 ### Rust FFI (Already Complete from POC)
@@ -46,7 +46,7 @@ core/crypto/src/androidTest/kotlin/.../shielded/
 rust/kuira-crypto-ffi/
 ├── Cargo.toml                   # Dependencies: midnight-zswap v6.1.0-alpha.5
 ├── src/lib.rs                   # FFI: derive_shielded_keys(), free_shielded_keys()
-└── (Phase 2B will add JNI glue)
+└── (Step 2 will add JNI glue)
 ```
 
 ---
@@ -98,7 +98,7 @@ MemoryUtils.useAndWipe(bip39Seed) { seed ->
 
 ### 3. Test Strategy
 - **Unit tests (28):** Run on JVM without native library
-- **Android tests (16):** Skip via `assumeTrue()` until Phase 2B completes
+- **Android tests (16):** Skip via `assumeTrue()` until Step 2 completes
 - **Test vectors:** Match Midnight SDK output exactly
 
 ### 4. Code Review Findings
@@ -109,7 +109,7 @@ MemoryUtils.useAndWipe(bip39Seed) { seed ->
 
 ---
 
-## Phase 2B Checklist
+## Step 2 Checklist
 
 ### Step 1: JNI C Glue Code (1-2 hours)
 ```c
@@ -199,7 +199,7 @@ Source: Midnight SDK `@midnight-ntwrk/ledger-v6` v6.1.0-alpha.6
 ```
 Error: Failed to load native library 'kuira_crypto_ffi'
 ```
-**Solution:** Phase 2B not complete yet. Android tests will skip until `.so` files built and bundled.
+**Solution:** Step 2 not complete yet. Android tests will skip until `.so` files built and bundled.
 
 ### Test vector mismatch
 ```
@@ -231,6 +231,6 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 
 ## History
 
-- **2026-01-13:** Phase 2A complete - Kotlin FFI wrapper (3 hours, 1 doc bug fixed)
+- **2026-01-13:** Step 1 complete - Kotlin FFI wrapper (3 hours, 1 doc bug fixed)
 - **2026-01-13:** POC validated - Rust FFI works with v6.1.0-alpha.5
 - **2026-01-13:** Version mismatch discovered - v7.0 incompatible with v6.1
