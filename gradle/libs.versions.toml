@@ -12,6 +12,7 @@ coroutines = "1.8.0"
 androidxTestRunner = "1.6.2"
 bitcoinj = "0.15.10"
 secp256k1Kmp = "0.18.0"
+bouncycastle = "1.78.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -34,6 +35,7 @@ androidx-test-runner = { group = "androidx.test", name = "runner", version.ref =
 # kotlin-bip39 = { group = "io.github.luca992.cash.z.ecc.android", name = "kotlin-bip39-jvm", version.ref = "kotlinBip39" }  # NOT BIP-39 compliant for seed derivation
 bitcoinj-core = { group = "org.bitcoinj", name = "bitcoinj-core", version.ref = "bitcoinj" }
 secp256k1-kmp = { group = "fr.acinq.secp256k1", name = "secp256k1-kmp-jvm", version.ref = "secp256k1Kmp" }
+bouncycastle-bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
