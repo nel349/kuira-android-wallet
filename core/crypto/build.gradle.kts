@@ -12,6 +12,40 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+
+        // NDK configuration for JNI bridge
+        ndk {
+            // Target architectures: ARM64 (primary), ARM32 (legacy), x86/x86_64 (emulators)
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
+        }
+
+        externalNativeBuild {
+            cmake {
+                // CMake arguments
+                arguments(
+                    "-DANDROID_STL=c++_shared",  // Use shared C++ standard library
+                    "-DANDROID_PLATFORM=android-24"  // Match minSdk
+                )
+                // C++ compiler flags
+                cppFlags("")
+            }
+        }
+    }
+
+    // External native build configuration (CMake)
+    externalNativeBuild {
+        cmake {
+            // Path to CMakeLists.txt in Rust FFI project
+            path = file("../../rust/kuira-crypto-ffi/CMakeLists.txt")
+            version = "3.22.1"  // Match CMake version from CMakeLists.txt
+        }
+    }
+
+    // Configure jniLibs directory for native libraries
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
     }
 
     buildTypes {

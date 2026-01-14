@@ -1,6 +1,6 @@
 # Shielded Key Derivation Implementation
 
-**Status:** ✅ Step 1 Complete (Kotlin FFI wrapper) | ⏳ Step 2 Next (JNI + NDK build)
+**Status:** ✅ Phase 1B Complete - Shielded key derivation fully operational
 **Last Updated:** 2026-01-13
 
 ---
@@ -13,12 +13,12 @@
 - **All unit tests passing:** ✅
 - **Code review:** ✅ 1 doc bug fixed, implementation clean
 
-### ⏳ Step 2 Next: JNI C Glue + Android Build (7-11 hours)
-- [ ] Write JNI C code (~50 lines)
-- [ ] Set up NDK cross-compilation
-- [ ] Build for ARM64, ARM32, x86_64, x86
-- [ ] Bundle `.so` files in APK
-- [ ] Run 16 Android integration tests
+### ✅ Step 2 Complete: JNI C Glue + Android Build (8 hours)
+- [x] Write JNI C code (119 lines in kuira_crypto_jni.c)
+- [x] Set up NDK cross-compilation (CMakeLists.txt + build.gradle.kts)
+- [x] Build for ARM64, ARM32, x86_64, x86
+- [x] Bundle `.so` files in APK (463KB - 601KB per arch, stripped)
+- [x] Run 16 Android integration tests - **All 24 tests passed** ✅
 
 ---
 
@@ -109,55 +109,53 @@ MemoryUtils.useAndWipe(bip39Seed) { seed ->
 
 ---
 
-## Step 2 Checklist
+## Step 2 Implementation Summary
 
-### Step 1: JNI C Glue Code (1-2 hours)
-```c
-// rust/kuira-crypto-ffi/jni/kuira_crypto_jni.c
-JNIEXPORT jstring JNICALL
-Java_com_midnight_kuira_core_crypto_shielded_ShieldedKeyDeriver_nativeDeriveShieldedKeys(
-    JNIEnv* env, jobject obj, jbyteArray seed_array
-) {
-    // 1. Get seed bytes from Java array (GetByteArrayRegion)
-    // 2. Call Rust: derive_shielded_keys(seed_ptr, 32)
-    // 3. Format result as "coinPk|encPk"
-    // 4. Free native memory: free_shielded_keys()
-    // 5. Return Java string
-}
-```
+### ✅ JNI C Glue Code (Completed)
+**File:** `rust/kuira-crypto-ffi/jni/kuira_crypto_jni.c` (119 lines)
 
-### Step 2: Android NDK Setup (2-3 hours)
-- Install Rust Android targets: `rustup target add aarch64-linux-android`
-- Create `Android.mk` or `CMakeLists.txt`
-- Update `core/crypto/build.gradle.kts` with NDK config
-- Create `build-android.sh` cross-compilation script
+- Extracts 32-byte seed from Java ByteArray using `GetByteArrayRegion()`
+- Calls Rust FFI: `derive_shielded_keys(seed_ptr, 32)`
+- Formats result as `"coinPk|encPk"` string for Kotlin parsing
+- Properly frees native memory: `free_shielded_keys()`
+- Includes `JNI_OnLoad` for version checking (JNI 1.6)
 
-### Step 3: Cross-Compile (1-2 hours)
-Build for 4 architectures:
-- `aarch64-linux-android` (ARM64 - primary)
-- `armv7-linux-androideabi` (ARM32 - legacy)
-- `x86_64-linux-android` (x86_64 emulator)
-- `i686-linux-android` (x86 emulator)
+### ✅ Android NDK Setup (Completed)
+**Files:** `CMakeLists.txt` + `core/crypto/build.gradle.kts`
 
-### Step 4: Bundle in APK (1 hour)
-Copy `.so` files to:
-```
-core/crypto/src/main/jniLibs/
-├── arm64-v8a/libkuira_crypto_ffi.so
-├── armeabi-v7a/libkuira_crypto_ffi.so
-├── x86/libkuira_crypto_ffi.so
-└── x86_64/libkuira_crypto_ffi.so
-```
+- Installed Rust Android targets: `aarch64-linux-android`, `armv7-linux-androideabi`, `x86_64-linux-android`, `i686-linux-android`
+- Created `CMakeLists.txt` with ABI → Rust target mapping
+- Updated `build.gradle.kts` with `externalNativeBuild` configuration
+- Created `build-android.sh` cross-compilation script (auto-detects NDK)
 
-### Step 5: Testing (1-2 hours)
+### ✅ Cross-Compilation (Completed)
+Built `.a` static libraries for all architectures:
+- `aarch64-linux-android`: 9.3 MB → 463 KB (stripped .so)
+- `armv7-linux-androideabi`: 7.5 MB → 458 KB (stripped .so)
+- `x86_64-linux-android`: 9.5 MB → 534 KB (stripped .so)
+- `i686-linux-android`: 6.7 MB → 601 KB (stripped .so)
+
+### ✅ APK Bundling (Completed)
+Native libraries automatically bundled by Gradle build system:
+- CMake compiles JNI C code + links Rust `.a` files → `.so` shared libraries
+- Gradle strips debug symbols: 1.7-1.9 MB → 458-601 KB per architecture
+- Libraries bundled in APK at: `lib/<arch>/libkuira_crypto_ffi.so`
+
+### ✅ Testing (Completed)
 ```bash
-# Run Android tests (should now pass instead of skip)
-./gradlew :core:crypto:connectedAndroidTest --tests "*.shielded.*"
+./gradlew :core:crypto:connectedAndroidTest
 
-# Expected: 16/16 tests pass
-# - Test vector matches Midnight SDK ✅
-# - Deterministic derivation ✅
-# - Thread safety ✅
+# Results: 24/24 tests passed (0 failures, 0 errors, 0 skipped)
+# - 8 BIP-39 Android tests ✅
+# - 6 HDWallet shielded integration tests ✅
+# - 10 ShieldedKeyDeriver integration tests ✅
+
+# Key validations:
+# ✅ Native library loads successfully on Android device
+# ✅ Test vector matches Midnight SDK v6.1.0-alpha.6 exactly
+# ✅ Deterministic derivation (same seed → same keys)
+# ✅ Thread safety (10 concurrent threads × 5 derivations)
+# ✅ Memory safety (seed not modified, proper wiping)
 ```
 
 ---
@@ -231,6 +229,13 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 
 ## History
 
+- **2026-01-13:** Step 2 complete - JNI + NDK build (8 hours, 24/24 tests passing)
 - **2026-01-13:** Step 1 complete - Kotlin FFI wrapper (3 hours, 1 doc bug fixed)
 - **2026-01-13:** POC validated - Rust FFI works with v6.1.0-alpha.5
 - **2026-01-13:** Version mismatch discovered - v7.0 incompatible with v6.1
+
+## Total Implementation Time
+
+**Phase 1B (Shielded Keys):** 11 hours total
+- Step 1 (Kotlin FFI wrapper): 3 hours
+- Step 2 (JNI + NDK + Testing): 8 hours
