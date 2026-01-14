@@ -76,9 +76,10 @@ class AddressGenerationTest {
             val previewAddress = Bech32m.encode("mn_addr_preview", addressData)
             val mainnetAddress = Bech32m.encode("mn_addr", addressData)
 
-            // Verify against known test vectors
+            // Verify against known test vectors (Lace compatibility)
+            // Address generated from Lace-compatible 32-byte seed
             assertEquals(
-                "mn_addr_preview19kxg8sxrsty37elmm6yd68tuy7prryjst2r48eapf2fdtd8z4gpq8xczf2",
+                "mn_addr_preview15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlshsa9pv",
                 previewAddress
             )
 
@@ -188,8 +189,8 @@ class AddressGenerationTest {
             val undeployedAddress = Bech32m.encode("mn_addr_undeployed", addressData)
             val previewAddress = Bech32m.encode("mn_addr_preview", addressData)
 
-            val seedHex = seed.take(32).joinToString("") { "%02x".format(it) }
-            println("\nSeed (first 32 bytes):")
+            val seedHex = seed.joinToString("") { "%02x".format(it) }
+            println("\nSeed (32 bytes - Lace compatible):")
             println("  $seedHex")
             println()
             println("Addresses:")
@@ -197,17 +198,17 @@ class AddressGenerationTest {
             println("  Test:       $testAddress")
             println("  Preview:    $previewAddress")
 
-            // Verify known addresses
+            // Verify known addresses (Lace compatibility - 32-byte seed)
             assertEquals(
-                "mn_addr_test19kxg8sxrsty37elmm6yd68tuy7prryjst2r48eapf2fdtd8z4gpqvayl85",
+                "mn_addr_test15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlsutpc0j",
                 testAddress
             )
             assertEquals(
-                "mn_addr_undeployed19kxg8sxrsty37elmm6yd68tuy7prryjst2r48eapf2fdtd8z4gpqauuvtx",
+                "mn_addr_undeployed15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlsd2etrq",
                 undeployedAddress
             )
             assertEquals(
-                "mn_addr_preview19kxg8sxrsty37elmm6yd68tuy7prryjst2r48eapf2fdtd8z4gpq8xczf2",
+                "mn_addr_preview15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlshsa9pv",
                 previewAddress
             )
 

@@ -38,9 +38,9 @@ class MidnightKeyDerivationTest {
         val unshieldedSeed = unshieldedKey.privateKeyBytes.joinToString("") { "%02x".format(it) }
 
         println("1. UNSHIELDED seed at m/44'/2400'/0'/0/0:")
-        println("   Expected: af7a998947b1b1fd12d99cb40ee98a739e6a2518d8965690781d85ea0e3a5e13")
+        println("   Expected: d319aebe08e7706091e56b1abe83f50ba6d3ceb4209dd0deca8ab22b264ff31c")
         println("   Actual:   $unshieldedSeed")
-        println("   Match: ${unshieldedSeed == "af7a998947b1b1fd12d99cb40ee98a739e6a2518d8965690781d85ea0e3a5e13"}")
+        println("   Match: ${unshieldedSeed == "d319aebe08e7706091e56b1abe83f50ba6d3ceb4209dd0deca8ab22b264ff31c"}")
         println()
 
         // Step 4: Derive SHIELDED key (role 3 = ZSWAP)
@@ -52,9 +52,9 @@ class MidnightKeyDerivationTest {
         val shieldedSeed = shieldedKey.privateKeyBytes.joinToString("") { "%02x".format(it) }
 
         println("2. SHIELDED seed at m/44'/2400'/0'/3/0:")
-        println("   Expected: b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
+        println("   Expected: 5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
         println("   Actual:   $shieldedSeed")
-        println("   Match: ${shieldedSeed == "b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180"}")
+        println("   Match: ${shieldedSeed == "5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176"}")
         println()
 
         // Step 5: Derive DUST key (role 2 = DUST)
@@ -66,15 +66,15 @@ class MidnightKeyDerivationTest {
         val dustSeed = dustKey.privateKeyBytes.joinToString("") { "%02x".format(it) }
 
         println("3. DUST seed at m/44'/2400'/0'/2/0:")
-        println("   Expected: eb8d1f8ec996205145c8409d790edea11b2da93e67924db6e0664f6de1a96f15")
+        println("   Expected: eec5d0f4a0524db4860445e0b5e65e861f7e9179d09eaa2cc621cb0aba8140d9")
         println("   Actual:   $dustSeed")
-        println("   Match: ${dustSeed == "eb8d1f8ec996205145c8409d790edea11b2da93e67924db6e0664f6de1a96f15"}")
+        println("   Match: ${dustSeed == "eec5d0f4a0524db4860445e0b5e65e861f7e9179d09eaa2cc621cb0aba8140d9"}")
         println()
 
-        // Verify all match
-        val unshieldedMatches = unshieldedSeed == "af7a998947b1b1fd12d99cb40ee98a739e6a2518d8965690781d85ea0e3a5e13"
-        val shieldedMatches = shieldedSeed == "b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180"
-        val dustMatches = dustSeed == "eb8d1f8ec996205145c8409d790edea11b2da93e67924db6e0664f6de1a96f15"
+        // Verify all match (⚠️ LACE COMPATIBILITY: Updated for 32-byte seeds)
+        val unshieldedMatches = unshieldedSeed == "d319aebe08e7706091e56b1abe83f50ba6d3ceb4209dd0deca8ab22b264ff31c"
+        val shieldedMatches = shieldedSeed == "5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176"
+        val dustMatches = dustSeed == "eec5d0f4a0524db4860445e0b5e65e861f7e9179d09eaa2cc621cb0aba8140d9"
 
         if (unshieldedMatches && shieldedMatches && dustMatches) {
             println("✅ SUCCESS: All three key types match Midnight SDK!")

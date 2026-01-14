@@ -55,7 +55,7 @@ class ShieldedKeyDeriverIntegrationTest {
     @Test
     fun testDeriveKeysWithTestVector() {
         // Test vector: shielded seed derived from "abandon abandon ... art" at m/44'/2400'/0'/3/0
-        val shieldedSeed = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
+        val shieldedSeed = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
 
         val keys = ShieldedKeyDeriver.deriveKeys(shieldedSeed)
 
@@ -65,12 +65,12 @@ class ShieldedKeyDeriverIntegrationTest {
         // Expected values from Midnight SDK v6.1.0-alpha.6
         assertEquals(
             "Coin public key should match Midnight SDK output",
-            "274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b994a",
+            "09c2f6f847d07e1a3faece35557eef5a811481991cef0689f47ebc90c0ab95f7",
             keys.coinPublicKey
         )
         assertEquals(
-            "Encryption public key should match Midnight SDK output",
-            "f3ae706bf28c856a407690b468081a7f5a123e523501b69f4395abcd7e19032b",
+            "Encryption public key should match Lace-compatible Midnight SDK output",
+            "58d0c3c4c2c6bcfbc369e01c1d893a7d93992762407daea4a4574cbc7efb3157",
             keys.encryptionPublicKey
         )
     }
@@ -78,7 +78,7 @@ class ShieldedKeyDeriverIntegrationTest {
     @Test
     fun testDeriveKeysMultipleTimes() {
         // Derive the same seed multiple times - should produce identical results
-        val seed = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
+        val seed = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
 
         val keys1 = ShieldedKeyDeriver.deriveKeys(seed)
         val keys2 = ShieldedKeyDeriver.deriveKeys(seed)
@@ -96,8 +96,8 @@ class ShieldedKeyDeriverIntegrationTest {
     @Test
     fun testDeriveKeysWithDifferentSeeds() {
         // Different seeds should produce different keys
-        val seed1 = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
-        val seed2 = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9181") // Last byte different
+        val seed1 = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
+        val seed2 = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b177") // Last byte different (Lace-compatible)
 
         val keys1 = ShieldedKeyDeriver.deriveKeys(seed1)
         val keys2 = ShieldedKeyDeriver.deriveKeys(seed2)
@@ -112,7 +112,7 @@ class ShieldedKeyDeriverIntegrationTest {
 
     @Test
     fun testDeriveKeysDoesNotModifySeed() {
-        val originalSeed = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
+        val originalSeed = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
         val seedCopy = originalSeed.copyOf()
 
         ShieldedKeyDeriver.deriveKeys(originalSeed)
@@ -152,7 +152,7 @@ class ShieldedKeyDeriverIntegrationTest {
 
     @Test
     fun testMemoryWipingAfterDerivation() {
-        val seed = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
+        val seed = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
 
         val keys = MemoryUtils.useAndWipe(seed) { seedBytes ->
             ShieldedKeyDeriver.deriveKeys(seedBytes)
@@ -161,7 +161,7 @@ class ShieldedKeyDeriverIntegrationTest {
         // Verify keys were derived
         assertNotNull(keys)
         assertEquals(
-            "274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b994a",
+            "09c2f6f847d07e1a3faece35557eef5a811481991cef0689f47ebc90c0ab95f7",
             keys!!.coinPublicKey
         )
 
@@ -176,8 +176,9 @@ class ShieldedKeyDeriverIntegrationTest {
     @Test
     fun testConcurrentDerivations() {
         // Test thread safety - derive keys concurrently
-        val seed = hexToBytes("b7637860b12f892ee07c67ad441c7935e37ac2153cefa39ae79083284f6d9180")
-        val expectedCoinPk = "274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b994a"
+        // Lace-compatible shielded seed (derived from 32-byte BIP-39 seed at m/44'/2400'/0'/3/0)
+        val seed = hexToBytes("5212aab1ab7134133dae5820e87697a4327218ee908d73c234ea0a7b95d0b176")
+        val expectedCoinPk = "09c2f6f847d07e1a3faece35557eef5a811481991cef0689f47ebc90c0ab95f7"
 
         val threads = List(10) { threadIndex ->
             Thread {

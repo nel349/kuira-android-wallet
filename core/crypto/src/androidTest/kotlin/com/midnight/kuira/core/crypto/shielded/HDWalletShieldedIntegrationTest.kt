@@ -75,12 +75,12 @@ class HDWalletShieldedIntegrationTest {
                     // Expected values from Midnight SDK
                     assertEquals(
                         "Coin public key should match Midnight SDK",
-                        "274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b994a",
+                        "09c2f6f847d07e1a3faece35557eef5a811481991cef0689f47ebc90c0ab95f7",
                         shieldedKeys.coinPublicKey
                     )
                     assertEquals(
                         "Encryption public key should match Midnight SDK",
-                        "f3ae706bf28c856a407690b468081a7f5a123e523501b69f4395abcd7e19032b",
+                        "58d0c3c4c2c6bcfbc369e01c1d893a7d93992762407daea4a4574cbc7efb3157",
                         shieldedKeys.encryptionPublicKey
                     )
 
@@ -134,7 +134,7 @@ class HDWalletShieldedIntegrationTest {
 
                 // Index 0 should match test vector
                 assertEquals(
-                    "274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b994a",
+                    "09c2f6f847d07e1a3faece35557eef5a811481991cef0689f47ebc90c0ab95f7",
                     shieldedKeys[0].coinPublicKey
                 )
 
@@ -222,7 +222,7 @@ class HDWalletShieldedIntegrationTest {
         // Verify keys were derived successfully
         assertNotNull(shieldedKeys)
         assertEquals(
-            "274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b994a",
+            "09c2f6f847d07e1a3faece35557eef5a811481991cef0689f47ebc90c0ab95f7",
             shieldedKeys!!.coinPublicKey
         )
     }
