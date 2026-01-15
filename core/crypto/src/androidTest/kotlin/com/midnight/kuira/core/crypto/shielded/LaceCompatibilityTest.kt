@@ -39,7 +39,7 @@ import org.junit.runner.RunWith
  * These test vectors were generated using:
  * 1. The official Lace wallet (https://www.lace.io/)
  * 2. Midnight TypeScript SDK with 32-byte truncated seed
- * 3. Script: `/Users/norman/Development/midnight/kuira-verification-test/generate-lace-addresses-all-networks.mjs`
+ * 3. Verification script: `generate-lace-addresses-all-networks.mjs` (see kuira-verification-test repo)
  *
  * ## References
  *

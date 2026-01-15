@@ -17,3 +17,5 @@ core/crypto/build/*
 core/testing/build/*
 .kotlin/
 .vscode/settings.json
+core/indexer/build/*
+core/wallet/build/*

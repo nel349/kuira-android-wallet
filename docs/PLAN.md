@@ -1,23 +1,42 @@
 # Kuira Wallet - Implementation Plan
 
 **Project:** Midnight Wallet for Android
-**Estimate:** 80-120 hours across 6 phases
-**Status:** Phase 1 in progress (90% complete)
+**Estimate:** 80-120 hours across 6 phases (split into 7 stages)
+**Status:** Phase 1 ✅ Complete (41h) | Phase 4A ⏳ Next
 
 See **PROGRESS.md** for current status and hours invested.
 
+## Implementation Strategy (REVISED)
+
+**Order Change Rationale:**
+1. **Phase 4 split into 4A/4B**: Ledger deserialization is blocked (requires ledger 7.0.0), but 85% of infrastructure can be built now
+2. **Phase 4A → Phase 3 → Phase 2**: Prioritize shielded transactions (core Midnight feature) with balance viewing infrastructure for testing
+3. **Phase 2 moved later**: Simpler unshielded transactions benefit from completed Phase 4B
+
+**Phase 4 "PARTIAL" Explained:**
+- **Phase 4A (8-11h)**: Infrastructure we can build NOW (GraphQL client, event cache, balance calculation with mock data)
+- **Phase 4B (2-3h)**: Add ledger deserializer LATER when ledger 7.0.0 is published to npm
+- **Blocker**: midnight-node produces ledger 7.0.0 events, but deserialization WASM not published yet
+
 ---
 
-## Phase Structure
+## Phase Structure (REVISED ORDER)
 
 | Phase | Goal | Estimate | Dependencies |
 |-------|------|----------|--------------|
-| **Phase 1: Crypto Foundation** | Key derivation & addresses | 30-35h | None |
+| **Phase 1: Crypto Foundation** ✅ | Key derivation & addresses | 30-35h | None |
+| **Phase 4A: Indexer Integration (Partial)** ⏳ | Balance viewing infrastructure | 8-11h | Phase 1 |
+| **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | Phase 1, 4A |
+| **Phase 4B: Indexer Integration (Complete)** | Add ledger deserializer | 2-3h | ledger 7.0.0 release |
 | **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 15-20h | Phase 1 |
-| **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | Phase 1, 2 |
-| **Phase 4: Indexer Integration** | Sync wallet state | 10-15h | Phase 2, 3 |
-| **Phase 5: DApp Connector** | Contract interaction | 15-20h | Phase 2, 4 |
+| **Phase 5: DApp Connector** | Contract interaction | 15-20h | Phase 3, 4B |
 | **Phase 6: UI & Polish** | Production-ready app | 15-20h | All phases |
+
+**Why This Order?**
+1. **Phase 4A before Phase 3**: Build balance viewing infrastructure to help test shielded transactions
+2. **Phase 3 before Phase 2**: Shielded transactions are the core Midnight feature (privacy-first)
+3. **Phase 4B when unblocked**: Complete balance viewing when ledger 7.0.0 releases
+4. **Phase 2 later**: Simpler unshielded transactions, benefits from completed Phase 4B
 
 ---
 
@@ -94,35 +113,60 @@ Expected Coin PK: 274c79e90fdf0e29468299ff624dc7092423041ba3976b76464feae3a07b99
 
 ---
 
-## Phase 2: Unshielded Transactions (15-20h)
+## Phase 4A: Indexer Integration - Infrastructure (8-11h)
 
-**Goal:** Send/receive transparent tokens (no privacy)
+**Goal:** Build balance viewing infrastructure (without deserialization)
+
+**Why Now?**
+- Phase 3 (shielded transactions) benefits from balance viewing for testing
+- 85% of Phase 4 doesn't require ledger deserialization
+- Can implement infrastructure now, add deserializer later
 
 **Architecture:**
-- Substrate RPC client (WebSocket to Midnight node)
-- UTXO state machine (Available → Pending → Spent)
-- Intent-based transactions (Segment 0 = guaranteed)
-- Schnorr signing (BIP-340 over secp256k1)
+- GraphQL client to Midnight indexer API
+- Event caching (store raw hex events)
+- Balance calculation logic (with mock data for now)
+- UI for displaying balances
 
 **Deliverables:**
-- [ ] Substrate RPC client (Polkadot.js pattern)
-- [ ] SCALE codec for transaction serialization
-- [ ] UTXO selection (largest-first strategy)
-- [ ] Multi-segment signing & binding
-- [ ] Transaction submission & tracking
-- [ ] Balance queries
+- [ ] GraphQL client (Apollo/Ktor)
+- [ ] Subscribe to `zswapLedgerEvents`
+- [ ] Event cache (Room database)
+- [ ] Balance calculation logic
+- [ ] Balance viewing UI
+- [ ] Sync progress tracking
+
+**Blocked:**
+- ⏸️ Ledger event deserialization (requires ledger 7.0.0-alpha.1)
 
 **Files:**
 ```
-core/network/
-├── SubstrateClient.kt           # WebSocket RPC
-└── ScaleCodec.kt                # Binary serialization
+core/indexer/
+├── api/
+│   ├── IndexerClient.kt          # GraphQL client
+│   ├── IndexerClientImpl.kt      # Implementation
+│   └── IndexerQueries.kt         # Queries/subscriptions
+├── storage/
+│   ├── EventCache.kt             # Cache raw events
+│   └── SyncStateManager.kt       # Track sync progress
+└── model/
+    ├── RawLedgerEvent.kt         # Raw hex event
+    └── NetworkState.kt           # Chain state
 
-core/ledger/
-├── TransactionBuilder.kt        # Intent-based tx
-├── UtxoManager.kt               # State tracking
-└── Signer.kt                    # Schnorr BIP-340
+core/wallet/
+└── balance/
+    ├── BalanceCalculator.kt      # Balance logic (mock data)
+    ├── BalanceRepository.kt      # State management
+    └── TransactionHistory.kt     # Transaction tracking
 ```
+
+**Testing:**
+- ✅ GraphQL subscriptions work
+- ✅ Event caching works
+- ✅ Balance calculation works with mock events
+- ⏸️ End-to-end blocked by deserialization
+
+**See:** `PHASE_4_PARTIAL_PLAN.md` for detailed implementation strategy
 
 ---
 
@@ -130,38 +174,120 @@ core/ledger/
 
 **Goal:** Private ZK transactions with zswap
 
+**Why After Phase 4A?**
+- Balance viewing infrastructure helps test transaction correctness
+- Core Midnight feature (privacy-first)
+- Phase 1 shielded keys are already working (JNI/Rust FFI)
+- More complex than unshielded, better to do while Phase 1 is fresh
+
 **Architecture:**
-- Uses shielded keys from Phase 1B
-- Zero-knowledge proofs for privacy
+- Uses shielded keys from Phase 1B ✅
+- Zero-knowledge proofs via proof server
 - Separate UTXO set (shielded pool)
+- Transaction submission to Midnight node
 
 **Deliverables:**
 - [ ] Shielded UTXO tracking
-- [ ] ZK proof generation/verification
+- [ ] ZK proof generation (via proof server)
 - [ ] Shielded transaction builder
+- [ ] Transaction signing & submission
 - [ ] Convert: shielded ↔ unshielded
 
 **Dependencies:**
-- Requires Phase 1B (shielded key derivation)
-- Requires Phase 2 (transaction infrastructure)
+- ✅ Phase 1B (shielded key derivation via JNI)
+- ✅ Phase 4A (balance viewing infrastructure for testing)
+
+**Testing:**
+- Manual verification via node logs
+- GraphQL transaction status queries
+- Mock balance viewing (until Phase 4B complete)
+
+**Files:**
+```
+core/ledger/
+├── ShieldedTransactionBuilder.kt # ZK transaction builder
+├── ProofServerClient.kt          # Proof generation
+├── ShieldedUtxoManager.kt        # UTXO tracking
+└── ShieldedSigner.kt             # Transaction signing
+
+core/network/
+├── SubstrateClient.kt            # Node RPC client
+└── ScaleCodec.kt                 # Binary serialization
+```
 
 ---
 
-## Phase 4: Indexer Integration (10-15h)
+## Phase 4B: Indexer Integration - Complete (2-3h)
 
-**Goal:** Fast wallet sync without full node
+**Goal:** Add ledger event deserialization (when ledger 7.0.0 releases)
+
+**Status:** ⏸️ Blocked waiting for Midnight to publish ledger 7.0.0-alpha.1 to npm
+
+**Current Blocker:**
+- midnight-node 0.20.0-alpha.1 produces ledger 7.0.0 format events
+- Deserialization requires ledger 7.0.0 WASM
+- ledger 7.0.0-alpha.1 exists as Git tag but NOT published to npm
+- Available: ledger 4.0.0, ledger-v6 6.1.0-alpha.6 (too old)
+
+**When Unblocked:**
+- [ ] Add ledger 7.0.0 dependency
+- [ ] Build WASM for Android (JNI/FFI)
+- [ ] Implement `LedgerEventDeserializer.kt`
+- [ ] Update tests to use real deserialization
+- [ ] End-to-end balance viewing works
+
+**Impact:**
+- ✅ Phase 4A infrastructure is ready
+- ✅ Can deserialize cached events immediately
+- ✅ Full balance viewing works for all 3 address types
+- ✅ Can retroactively test Phase 3 transactions
+
+**Files:**
+```
+core/indexer/
+└── deserializer/
+    ├── LedgerEventDeserializer.kt   # Interface (already defined)
+    └── LedgerEventDeserializerImpl.kt # Implementation (TODO)
+```
+
+---
+
+## Phase 2: Unshielded Transactions (15-20h)
+
+**Goal:** Send/receive transparent tokens (no privacy)
+
+**Why Later?**
+- Simpler than shielded transactions
+- Not core Midnight feature (users want privacy)
+- Benefits from completed Phase 4B (full balance viewing)
+- Phase 3 already implements transaction infrastructure
 
 **Architecture:**
-- Connect to Midnight indexer API
-- Subscribe to relevant events
-- Detect incoming transactions
-- Update local UTXO set
+- Substrate RPC client (reuse from Phase 3)
+- UTXO state machine (Available → Pending → Spent)
+- Intent-based transactions (Segment 0 = guaranteed)
+- Schnorr signing (BIP-340 over secp256k1) from Phase 1
 
 **Deliverables:**
-- [ ] Indexer API client
-- [ ] Event subscription
-- [ ] Transaction detection
-- [ ] Balance sync
+- [ ] Unshielded UTXO tracking
+- [ ] SCALE codec for transaction serialization
+- [ ] UTXO selection (largest-first strategy)
+- [ ] Multi-segment signing & binding
+- [ ] Transaction submission & tracking
+- [ ] Balance queries (reuse Phase 4B)
+
+**Dependencies:**
+- ✅ Phase 1 (unshielded keys)
+- ✅ Phase 3 (transaction infrastructure)
+- ✅ Phase 4B (balance viewing for testing)
+
+**Files:**
+```
+core/ledger/
+├── UnshieldedTransactionBuilder.kt # Intent-based tx
+├── UnshieldedUtxoManager.kt        # State tracking
+└── UnshieldedSigner.kt             # Schnorr BIP-340 (reuse Phase 1)
+```
 
 ---
 

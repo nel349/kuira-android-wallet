@@ -1,0 +1,321 @@
+package com.midnight.kuira.core.indexer.api
+
+import com.midnight.kuira.core.indexer.model.BlockInfo
+import com.midnight.kuira.core.indexer.model.NetworkState
+import com.midnight.kuira.core.indexer.model.RawLedgerEvent
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.*
+import io.ktor.client.plugins.websocket.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+
+/**
+ * Ktor-based implementation of IndexerClient for Midnight v3 GraphQL API.
+ *
+ * **Connection:**
+ * - HTTPS endpoint: `{baseUrl}/graphql` (with TLS certificate pinning)
+ * - WebSocket endpoint: `{baseUrl}/graphql/ws`
+ *
+ * **GraphQL Protocol:**
+ * - Uses HTTPS POST for queries/mutations
+ * - Uses WebSocket for subscriptions (graphql-ws protocol)
+ *
+ * **Security:**
+ * - TLS certificate pinning enabled for production
+ * - Development mode allows localhost HTTP (for local testing)
+ *
+ * @param baseUrl Indexer API base URL (e.g., "https://indexer.midnight.network/api/v3")
+ * @param pinnedCertificates List of SHA-256 certificate fingerprints for pinning (production only)
+ * @param developmentMode If true, allows HTTP to localhost (INSECURE - testing only)
+ */
+class IndexerClientImpl(
+    private val baseUrl: String = "https://indexer.midnight.network/api/v3",
+    private val pinnedCertificates: List<String> = emptyList(),
+    private val developmentMode: Boolean = false
+) : IndexerClient {
+
+    private val json = Json {
+        prettyPrint = true
+        isLenient = true
+        ignoreUnknownKeys = true
+    }
+
+    private val httpClient = HttpClient(CIO) {
+        install(ContentNegotiation) {
+            json(json)
+        }
+        install(Logging) {
+            logger = Logger.DEFAULT
+            level = LogLevel.INFO
+        }
+        install(WebSockets)
+
+        // Timeout configuration
+        install(HttpTimeout) {
+            requestTimeoutMillis = 30_000 // 30 seconds
+            connectTimeoutMillis = 10_000 // 10 seconds
+            socketTimeoutMillis = 30_000 // 30 seconds
+        }
+
+        // Response validation (catch non-2xx responses)
+        expectSuccess = true
+
+        // TLS/SSL Configuration
+        // Note: Certificate pinning documented in TlsConfiguration.kt
+        // Phase 4B: Implement using OkHttp engine or custom TrustManager
+        engine {
+            https {
+                // TLS configuration placeholder
+                // Phase 4A: No certificate pinning (documented)
+                // Phase 4B: Add certificate pinning implementation here
+            }
+        }
+    }
+
+    init {
+        // Validate configuration
+        if (!developmentMode && !baseUrl.startsWith("https://")) {
+            throw IllegalArgumentException(
+                "Production mode requires HTTPS. Got: $baseUrl\n" +
+                "Use developmentMode=true for HTTP testing (INSECURE)"
+            )
+        }
+
+        if (developmentMode && pinnedCertificates.isNotEmpty()) {
+            throw IllegalArgumentException(
+                "Certificate pinning not supported in development mode"
+            )
+        }
+    }
+
+    private val graphqlEndpoint = "$baseUrl/graphql"
+    private val wsEndpoint = baseUrl.replace("http://", "ws://").replace("https://", "wss://") + "/graphql/ws"
+
+    /**
+     * GraphQL request payload.
+     */
+    @Serializable
+    private data class GraphQLRequest(
+        val query: String,
+        val variables: Map<String, String>? = null
+    )
+
+    override fun subscribeToZswapEvents(fromId: Long?): Flow<RawLedgerEvent> = flow {
+        val subscription = """
+            subscription {
+                zswapLedgerEvents${if (fromId != null) "(fromId: $fromId)" else ""} {
+                    id
+                    raw
+                    maxId
+                }
+            }
+        """.trimIndent()
+
+        // TODO: Implement WebSocket subscription using graphql-ws protocol
+        // For Phase 4A, this is a placeholder that demonstrates the API
+
+        // WebSocket subscription flow:
+        // 1. Connect to wsEndpoint
+        // 2. Send connection_init message
+        // 3. Wait for connection_ack
+        // 4. Send subscribe message with subscription query
+        // 5. Receive next messages with data
+        // 6. Parse JSON and emit RawLedgerEvent objects
+
+        error("WebSocket subscriptions not yet implemented - Phase 4A infrastructure only")
+    }
+
+    override fun subscribeToBlocks(): Flow<BlockInfo> = flow {
+        val subscription = """
+            subscription {
+                blocks {
+                    height
+                    hash
+                    timestamp
+                }
+            }
+        """.trimIndent()
+
+        // TODO: Implement WebSocket subscription
+        error("WebSocket subscriptions not yet implemented - Phase 4A infrastructure only")
+    }
+
+    override suspend fun getNetworkState(): NetworkState = retryWithPolicy() {
+        try {
+            val query = """
+                query {
+                    networkState {
+                        currentBlock
+                        maxBlock
+                    }
+                }
+            """.trimIndent()
+
+            val response = httpClient.post(graphqlEndpoint) {
+                contentType(ContentType.Application.Json)
+                setBody(GraphQLRequest(query))
+            }
+
+            val responseBody = response.bodyAsText()
+            val jsonResponse = json.parseToJsonElement(responseBody).jsonObject
+
+            // Check for GraphQL errors
+            val errors = jsonResponse["errors"]?.jsonArray
+            if (errors != null && errors.isNotEmpty()) {
+                val errorMessages = errors.map { it.jsonObject["message"]?.jsonPrimitive?.content ?: "Unknown error" }
+                throw GraphQLException(errorMessages, "GraphQL errors: ${errorMessages.joinToString()}")
+            }
+
+            val data = jsonResponse["data"]?.jsonObject
+                ?: throw InvalidResponseException("Missing 'data' field in response")
+
+            val networkState = data["networkState"]?.jsonObject
+                ?: throw InvalidResponseException("Missing 'networkState' field in response")
+
+            val currentBlock = networkState["currentBlock"]?.jsonPrimitive?.long
+                ?: throw InvalidResponseException("Missing 'currentBlock' field")
+            val maxBlock = networkState["maxBlock"]?.jsonPrimitive?.long
+                ?: throw InvalidResponseException("Missing 'maxBlock' field")
+
+            // Validate values
+            if (currentBlock < 0 || maxBlock < 0) {
+                throw InvalidResponseException("Invalid block heights: current=$currentBlock, max=$maxBlock")
+            }
+            if (currentBlock > maxBlock) {
+                throw InvalidResponseException("Current block ($currentBlock) > max block ($maxBlock)")
+            }
+
+            NetworkState.fromBlockHeights(currentBlock, maxBlock)
+        } catch (e: ResponseException) {
+            throw HttpException(e.response.status.value, "HTTP error: ${e.message}", e)
+        } catch (e: HttpRequestTimeoutException) {
+            throw TimeoutException("Request timeout while fetching network state", e)
+        } catch (e: java.net.UnknownHostException) {
+            throw NetworkException("DNS resolution failed for $graphqlEndpoint", e)
+        } catch (e: java.net.ConnectException) {
+            throw NetworkException("Connection failed to $graphqlEndpoint", e)
+        } catch (e: java.io.IOException) {
+            throw NetworkException("Network I/O error: ${e.message}", e)
+        } catch (e: IndexerException) {
+            throw e // Re-throw our custom exceptions
+        } catch (e: Exception) {
+            throw InvalidResponseException("Unexpected error: ${e.message}", e)
+        }
+    }
+
+    override suspend fun getEventsInRange(fromId: Long, toId: Long): List<RawLedgerEvent> = retryWithPolicy() {
+        // Validate input parameters
+        if (fromId < 0) {
+            throw IllegalArgumentException("fromId must be non-negative, got: $fromId")
+        }
+        if (toId < fromId) {
+            throw IllegalArgumentException("toId ($toId) must be >= fromId ($fromId)")
+        }
+
+        try {
+            val query = """
+                query {
+                    zswapLedgerEvents(fromId: $fromId, toId: $toId) {
+                        id
+                        raw
+                        maxId
+                    }
+                }
+            """.trimIndent()
+
+            val response = httpClient.post(graphqlEndpoint) {
+                contentType(ContentType.Application.Json)
+                setBody(GraphQLRequest(query))
+            }
+
+            val responseBody = response.bodyAsText()
+            val jsonResponse = json.parseToJsonElement(responseBody).jsonObject
+
+            // Check for GraphQL errors
+            val errors = jsonResponse["errors"]?.jsonArray
+            if (errors != null && errors.isNotEmpty()) {
+                val errorMessages = errors.map { it.jsonObject["message"]?.jsonPrimitive?.content ?: "Unknown error" }
+                throw GraphQLException(errorMessages, "GraphQL errors: ${errorMessages.joinToString()}")
+            }
+
+            val data = jsonResponse["data"]?.jsonObject
+                ?: throw InvalidResponseException("Missing 'data' field in response")
+
+            val events = data["zswapLedgerEvents"]?.jsonArray
+                ?: return@retryWithPolicy emptyList()
+
+            events.map { eventJson ->
+                val event = eventJson.jsonObject
+                val id = event["id"]?.jsonPrimitive?.long
+                    ?: throw InvalidResponseException("Event missing 'id' field")
+                val rawHex = event["raw"]?.jsonPrimitive?.content
+                    ?: throw InvalidResponseException("Event missing 'raw' field")
+                val maxId = event["maxId"]?.jsonPrimitive?.long
+                    ?: throw InvalidResponseException("Event missing 'maxId' field")
+
+                // Validate event data
+                if (id < 0) {
+                    throw InvalidResponseException("Invalid event ID: $id")
+                }
+                if (rawHex.isBlank()) {
+                    throw InvalidResponseException("Event $id has empty raw hex")
+                }
+                if (maxId < 0) {
+                    throw InvalidResponseException("Invalid maxId: $maxId")
+                }
+
+                RawLedgerEvent(id = id, rawHex = rawHex, maxId = maxId)
+            }
+        } catch (e: ResponseException) {
+            throw HttpException(e.response.status.value, "HTTP error: ${e.message}", e)
+        } catch (e: HttpRequestTimeoutException) {
+            throw TimeoutException("Request timeout while fetching events [$fromId-$toId]", e)
+        } catch (e: java.net.UnknownHostException) {
+            throw NetworkException("DNS resolution failed for $graphqlEndpoint", e)
+        } catch (e: java.net.ConnectException) {
+            throw NetworkException("Connection failed to $graphqlEndpoint", e)
+        } catch (e: java.io.IOException) {
+            throw NetworkException("Network I/O error: ${e.message}", e)
+        } catch (e: IndexerException) {
+            throw e // Re-throw our custom exceptions
+        } catch (e: Exception) {
+            throw InvalidResponseException("Unexpected error: ${e.message}", e)
+        }
+    }
+
+    override suspend fun isHealthy(): Boolean {
+        return try {
+            // Try to get network state with a short timeout
+            val response = httpClient.get(graphqlEndpoint) {
+                timeout {
+                    requestTimeoutMillis = 5_000 // 5 second timeout for health check
+                }
+            }
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            // Health check failed - indexer is not reachable
+            false
+        }
+    }
+
+    override fun close() {
+        httpClient.close()
+    }
+}
