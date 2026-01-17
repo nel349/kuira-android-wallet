@@ -3,6 +3,8 @@ package com.midnight.kuira.core.indexer.api
 import com.midnight.kuira.core.indexer.model.BlockInfo
 import com.midnight.kuira.core.indexer.model.NetworkState
 import com.midnight.kuira.core.indexer.model.RawLedgerEvent
+import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
+import com.midnight.kuira.core.indexer.websocket.GraphQLWebSocketClient
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -15,6 +17,7 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -127,6 +130,25 @@ class IndexerClientImpl(
     private val wsEndpoint = baseUrl.replace("http://", "ws://").replace("https://", "wss://") + "/graphql/ws"
 
     /**
+     * WebSocket client for subscriptions.
+     * Lazily initialized when first subscription is created.
+     */
+    private var wsClient: GraphQLWebSocketClient? = null
+
+    /**
+     * Get or create WebSocket client.
+     */
+    private fun getOrCreateWsClient(): GraphQLWebSocketClient {
+        if (wsClient == null) {
+            wsClient = GraphQLWebSocketClient(
+                url = wsEndpoint,
+                httpClient = httpClient
+            )
+        }
+        return wsClient!!
+    }
+
+    /**
      * GraphQL request payload.
      */
     @Serializable
@@ -134,6 +156,39 @@ class IndexerClientImpl(
         val query: String,
         val variables: Map<String, String>? = null
     )
+
+    // ==================== UTXO TRACKING (Phase 4B) ====================
+
+    override fun subscribeToUnshieldedTransactions(
+        address: String,
+        transactionId: Int?
+    ): Flow<UnshieldedTransactionUpdate> {
+        // Build variables
+        val variables = buildMap {
+            put("address", address)
+            if (transactionId != null) {
+                put("transactionId", transactionId.toString())
+            }
+        }
+
+        // Subscribe using centralized query
+        return getOrCreateWsClient()
+            .subscribe(GraphQLQueries.SUBSCRIBE_UNSHIELDED_TRANSACTIONS, variables)
+            .map { jsonElement ->
+                // GraphQL response format: {data: {unshieldedTransactions: {...}}}
+                // Extract the unshieldedTransactions field from data
+                val unshieldedTransactionsJson = jsonElement
+                    .jsonObject["data"]
+                    ?.jsonObject?.get("unshieldedTransactions")
+                    ?: throw InvalidResponseException("Missing unshieldedTransactions in response")
+
+                // Parse to UnshieldedTransactionUpdate
+                json.decodeFromJsonElement(
+                    UnshieldedTransactionUpdate.serializer(),
+                    unshieldedTransactionsJson
+                )
+            }
+    }
 
     // ==================== SYNC ENGINE (Phase 4A) ====================
 
@@ -179,18 +234,9 @@ class IndexerClientImpl(
 
     override suspend fun getNetworkState(): NetworkState = retryWithPolicy() {
         try {
-            val query = """
-                query {
-                    networkState {
-                        currentBlock
-                        maxBlock
-                    }
-                }
-            """.trimIndent()
-
             val response = httpClient.post(graphqlEndpoint) {
                 contentType(ContentType.Application.Json)
-                setBody(GraphQLRequest(query))
+                setBody(GraphQLRequest(GraphQLQueries.QUERY_NETWORK_STATE))
             }
 
             val responseBody = response.bodyAsText()
@@ -250,19 +296,15 @@ class IndexerClientImpl(
         }
 
         try {
-            val query = """
-                query {
-                    zswapLedgerEvents(fromId: $fromId, toId: $toId) {
-                        id
-                        raw
-                        maxId
-                    }
-                }
-            """.trimIndent()
-
             val response = httpClient.post(graphqlEndpoint) {
                 contentType(ContentType.Application.Json)
-                setBody(GraphQLRequest(query))
+                setBody(GraphQLRequest(
+                    query = GraphQLQueries.QUERY_ZSWAP_EVENTS,
+                    variables = mapOf(
+                        "fromId" to fromId.toString(),
+                        "toId" to toId.toString()
+                    )
+                ))
             }
 
             val responseBody = response.bodyAsText()
@@ -336,6 +378,11 @@ class IndexerClientImpl(
     }
 
     override fun close() {
+        // Close HTTP client (WebSocket connections will be closed automatically)
         httpClient.close()
+
+        // Note: WebSocket client cleanup happens automatically when httpClient closes
+        // since they share the same underlying client.
+        // To explicitly close: launch { wsClient?.close() } in a coroutine scope
     }
 }

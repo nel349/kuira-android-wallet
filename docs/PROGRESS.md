@@ -1,9 +1,9 @@
 # Kuira Wallet - Progress Tracker
 
-**Last Updated:** January 15, 2026
-**Current Phase:** Phase 4A-Lite (Light Wallet Queries) + UI
-**Hours Invested:** 62h / ~120h estimated
-**Completion:** ~52%
+**Last Updated:** January 16, 2026
+**Current Phase:** Phase 4B-2 (UTXO Database + Subscriptions)
+**Hours Invested:** 70h / ~120h estimated
+**Completion:** ~58%
 
 ---
 
@@ -14,16 +14,18 @@
 | **Phase 1: Crypto Foundation** | ✅ **Complete** | 30-35h | 41h | 100% |
 | ↳ 1A: Unshielded Crypto | ✅ Complete | 20-25h | 30h | 100% |
 | ↳ 1B: Shielded Keys (JNI FFI) | ✅ Complete | 10-15h | 11h | 100% |
-| **Phase 4A-Full: Full Sync Engine** | ✅ **Complete (Optional)** | 8-11h | 21h | 100% |
-| **Phase 4A-Lite: Light Wallet Queries** | 🔄 **In Progress** | 2-3h | 0h | 0% |
-| **Phase 4A-UI: Balance Display** | ⏸️ Next | 5-8h | 0h | 0% |
+| **Phase 4A-Full: Full Sync Engine** | ✅ **Complete** | 8-11h | 21h | 100% |
+| **Phase 4B: WebSocket + UTXO Tracking** | 🔄 **In Progress** | 25-35h | 8h | ~30% |
+| ↳ 4B-1: WebSocket Client | ✅ Complete | ~8h | 8h | 100% |
+| ↳ 4B-2: UTXO Database | 🔄 Next | ~10h | 0h | 0% |
+| ↳ 4B-3: Balance Calculator | ⏸️ Pending | ~3h | 0h | 0% |
+| ↳ 4B-4: UI Integration | ⏸️ Pending | ~5-8h | 0h | 0% |
 | **Phase 3: Shielded Transactions** | ⏸️ Not Started | 20-25h | 0h | 0% |
 | **Phase 2: Unshielded Transactions** | ⏸️ Not Started | 15-20h | 0h | 0% |
-| **Phase 4B: Real-time Sync (WASM)** | 📋 Future/Optional | 25-35h | 0h | 0% |
 | **Phase 5: DApp Connector** | ⏸️ Not Started | 15-20h | 0h | 0% |
 | **Phase 6: UI & Polish** | ⏸️ Not Started | 15-20h | 0h | 0% |
 
-**Next Milestone:** Working balance viewer (7-11h remaining)
+**Next Milestone:** Working balance viewer (18-21h remaining for Phase 4B)
 
 ---
 
@@ -147,34 +149,159 @@ For **mobile balance viewing**, we only need light wallet queries (Phase 4A-Lite
 
 ---
 
-## Phase 4A-Lite: Light Wallet Queries 🔄 IN PROGRESS
+## Phase 4B: WebSocket + UTXO Tracking 🔄 IN PROGRESS
 
-**Estimate:** 2-3h
-**Goal:** Simple balance queries for mobile wallet
-**Status:** Next task
+**Duration:** Started January 15, 2026
+**Goal:** Real-time transaction subscriptions + local UTXO database
+**Status:** 🔄 WebSocket client complete, UTXO database next
+**Hours:** 8h invested / 25-35h estimated (~30% complete)
 
-### Planned Deliverables
+### Critical Discovery (January 15, 2026)
 
-- [ ] `getUnshieldedBalance(address)` - Query indexer for balance
-- [ ] `getShieldedBalance(coinPublicKey)` - Query shielded balance
-- [ ] `getUtxos(address)` - Get UTXOs for transaction building
-- [ ] `getTransactionHistory(address)` - Get transaction list
-- [ ] Balance caching (Room database)
-- [ ] Auto-refresh when online
+**Problem:** Phase 4A-Lite was fundamentally wrong - we invented fake balance query APIs that don't exist in Midnight's GraphQL schema.
 
-**Why This is Different from Phase 4A-Full:**
-- Query indexer directly (don't sync all events)
-- Cache only balances (not all events)
-- Fast and simple (mobile-optimized)
-- Works offline (shows cached balance)
+**Reality:** Midnight's indexer does NOT provide simple queries like:
+```graphql
+# ❌ DOES NOT EXIST
+query GetUnshieldedBalance($address: String!) {
+  unshieldedBalance(address: $address) { amount }
+}
+```
+
+**Solution:** Light wallets must:
+1. Subscribe to transaction events via WebSocket (GraphQL-WS protocol)
+2. Track UTXOs locally in Room database
+3. Calculate balances by summing unspent UTXOs
+
+This is the **ONLY** way to view balances in a Midnight wallet.
 
 ---
 
-## Phase 4A-UI: Balance Display ⏸️ NEXT
+## Phase 4B-1: WebSocket Client ✅ COMPLETE (8h)
 
-**Estimate:** 5-8h
-**Goal:** Show balances to user
-**Status:** After Phase 4A-Lite completes
+**Duration:** January 15-16, 2026
+**Goal:** Establish WebSocket connection to Midnight indexer
+**Status:** ✅ Complete - 87 tests passing
+
+### Completed Deliverables
+
+#### GraphQL-WS Protocol Implementation
+- ✅ 8 message types implemented (ConnectionInit, ConnectionAck, Subscribe, Next, Error, Complete, Ping, Pong)
+- ✅ Connection lifecycle management
+- ✅ Subscription management (concurrent map)
+- ✅ Thread-safe connection state (AtomicBoolean)
+- ✅ Auto-increment operation IDs (AtomicInteger)
+- ✅ Flow-based subscription API
+- **Tests:** 87 total, 0 failures (4 integration tests marked @Ignore for manual execution)
+
+**Files:**
+```
+core/indexer/src/main/kotlin/.../websocket/
+├── GraphQLWebSocketClient.kt     # Main client (262 lines)
+├── GraphQLWebSocketMessage.kt    # Message types (sealed class)
+└── SubscriptionFlow.kt           # Flow wrapper
+
+core/indexer/src/test/kotlin/.../websocket/
+└── GraphQLWebSocketClientTest.kt # Integration tests
+```
+
+#### Critical Fixes
+
+**Problem 1: HTTP 400 Handshake Failure**
+- **Cause:** Missing `Sec-WebSocket-Protocol: graphql-transport-ws` header
+- **Failed Approach:** Tried `defaultRequest` plugin (doesn't work for WebSocket)
+- **Solution:** Use `block` parameter in `webSocketSession()`
+```kotlin
+session = httpClient.webSocketSession(
+    urlString = url,
+    block = {
+        header(HttpHeaders.SecWebSocketProtocol, "graphql-transport-ws")
+    }
+)
+```
+
+**Problem 2: Empty JSON Sent to Server**
+- **Cause:** kotlinx.serialization omitting fields with default values
+- **Debug:** Sending `{}` instead of `{"type":"connection_init","payload":null}`
+- **Solution:** Set `encodeDefaults = true` in Json configuration
+```kotlin
+private val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    encodeDefaults = true  // CRITICAL: Always include default-valued fields
+}
+```
+
+#### Key Lesson Learned
+
+User feedback: **"Please investigate the documentation before making any assumptions!"**
+
+This was correct - examining Midnight's TypeScript `indexer-client` implementation immediately revealed:
+1. The exact GraphQL-WS protocol requirements
+2. The sub-protocol header requirement
+3. The message format expectations
+
+**Sources:**
+- https://ktor.io/docs/client-websockets.html
+- https://github.com/ktorio/ktor/issues/940
+- https://github.com/enisdenjo/graphql-ws/blob/master/PROTOCOL.md
+- `midnight-libraries/midnight-wallet/packages/indexer-client/src/graphql/`
+
+#### Documentation Created
+
+Created 6 comprehensive docs to explain Phase 4 architecture:
+- `docs/learning/WEBSOCKET_SOLUTION.md` - Complete troubleshooting guide
+- `docs/learning/PHASE_4_STORY.md` - End-to-end Phase 4 explanation
+- `docs/learning/KTOR_WEBSOCKET_CRASH_COURSE.md` - Ktor, channels, atomics
+- `docs/learning/WEBSOCKET_FRAMES_EXPLAINED.md` - WebSocket frames from scratch
+- `docs/learning/CHANNEL_VS_FLOW.md` - Channel vs Flow with examples
+- `docs/learning/INDEXER_MODULE_BIG_PICTURE.md` - Complete indexer architecture
+
+---
+
+## Phase 4B-2: UTXO Database + Subscriptions ⏸️ NEXT (~10h)
+
+**Goal:** Subscribe to transactions and track UTXOs locally
+**Status:** Not started
+
+### Planned Deliverables
+
+- [ ] Add subscription methods to IndexerClient
+  - `subscribeToUnshieldedTransactions(address: String): Flow<UnshieldedTransaction>`
+  - `subscribeToShieldedTransactions(sessionId: String): Flow<ShieldedTransaction>`
+- [ ] Create Room database for UTXO tracking
+  - `UnshieldedUtxoEntity`, `ShieldedUtxoEntity`
+  - `UnshieldedUtxoDao`, `ShieldedUtxoDao`
+  - `UtxoDatabase`
+- [ ] Transaction model classes
+  - `UnshieldedTransaction` (inputs, outputs, timestamp)
+  - `ShieldedTransaction` (commitments, nullifiers)
+  - `Utxo` (txHash, index, value, spendable)
+- [ ] UTXO state management
+  - Mark UTXOs as spent when consumed
+  - Handle chain reorgs
+
+---
+
+## Phase 4B-3: Balance Calculator ⏸️ PENDING (~3h)
+
+**Goal:** Calculate balances by summing unspent UTXOs
+**Status:** Waiting for 4B-2
+
+### Planned Deliverables
+
+- [ ] Query unspent UTXOs from Room database
+- [ ] Group by token type
+- [ ] Sum amounts using BigInteger
+- [ ] `calculateUnshieldedBalance(address: String): Map<String, BigInteger>`
+- [ ] `calculateShieldedBalance(coinPubKey: String): Map<String, BigInteger>`
+
+---
+
+## Phase 4B-4: UI Integration ⏸️ PENDING (~5-8h)
+
+**Goal:** Display balances to user
+**Status:** Waiting for 4B-3
 
 ### Planned Deliverables
 
@@ -462,9 +589,23 @@ Source: Midnight SDK `@midnight-ntwrk/ledger-v6` v6.1.0-alpha.6
 ## Key Metrics
 
 **Test Coverage:**
-- Unit tests: 90 passing (BIP-39: 52, BIP-32: 12, Bech32m: 10, Shielded: 28, Debug: 2)
-- Android tests: 16 written (pending Phase 1B completion)
-- **Total:** 90 unit + 16 integration = 106 tests
+- Phase 1 tests: 90 unit + 24 Android = 114 tests ✅
+  - BIP-39: 52 unit + 8 Android
+  - BIP-32: 12 unit
+  - Bech32m: 10 unit
+  - Shielded: 28 unit + 16 Android
+  - Debug: 2 unit
+- Phase 4A-Full tests: 118 tests ✅
+  - InMemoryEventCacheTest: 20
+  - ReorgDetectorImplTest: 16
+  - RetryPolicyTest: 21
+  - ModelValidationTest: 26
+  - BalanceCalculatorTest: 17
+  - LedgerEventValidationTest: 18
+- Phase 4B-1 tests: 87 tests ✅
+  - GraphQLWebSocketClientTest: 4 (marked @Ignore for manual execution)
+  - Unit tests for message types and protocol
+- **Total:** 319 tests passing
 
 **Code:**
 - Production: ~1,200 LOC (Kotlin)

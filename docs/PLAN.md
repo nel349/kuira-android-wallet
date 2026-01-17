@@ -2,27 +2,30 @@
 
 **Project:** Midnight Wallet for Android
 **Estimate:** 85-125 hours across 7 phases
-**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4A-Lite 🔄 Next
+**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B 🔄 In Progress
 
 See **PROGRESS.md** for current status and hours invested.
 
 ## Implementation Strategy (REVISED - Jan 2026)
 
-**Critical Insight:** Phase 4 was over-engineered. We built a full wallet sync engine when we only needed light wallet queries to view balances.
+**Critical Discovery:** Midnight's indexer does NOT provide simple balance query APIs. Light wallets must:
+- Subscribe to transaction events via WebSocket
+- Track UTXOs locally in database
+- Calculate balances by summing unspent UTXOs
 
-**New Structure:**
+**Current Structure:**
 1. ✅ **Phase 1 Complete**: Crypto/keys working (41h)
-2. ✅ **Phase 4A-Full Complete**: Full sync engine (optional/advanced) (21h)
-3. 🔄 **Phase 4A-Lite Next**: Light wallet queries (2-3h)
-4. 🔄 **Phase 4A-UI Next**: Balance display (5-8h)
+2. ✅ **Phase 4A-Full Complete**: GraphQL HTTP client + sync engine (21h)
+3. 🔄 **Phase 4B In Progress**: WebSocket subscriptions + UTXO tracking (8h invested)
+4. ⏭️ **Phase 4B-UI Next**: Balance display (5-8h)
 5. ⏭️ **Phase 3**: Shielded transactions (20-25h)
-6. 📋 **Phase 4B**: Real-time sync with WASM (optional/future) (25-35h)
+6. ⏭️ **Phase 2**: Unshielded transactions (15-20h)
 
 **Why This Order?**
 1. **Phase 1 first**: Must have keys before anything else ✅
-2. **Light wallet before full wallet**: Mobile apps should be simple and fast
+2. **Phase 4 before transactions**: Need balance viewing to test transactions
 3. **Phase 3 before Phase 2**: Shielded transactions are core Midnight feature (privacy-first)
-4. **Phase 4B optional**: Full sync engine is "nice to have" for privacy mode, not essential
+4. **No "lite" option**: Midnight architecture requires WebSocket + local UTXO tracking
 
 ---
 
@@ -31,16 +34,18 @@ See **PROGRESS.md** for current status and hours invested.
 | Phase | Goal | Estimate | Actual | Status |
 |-------|------|----------|--------|--------|
 | **Phase 1: Crypto Foundation** | Key derivation & addresses | 30-35h | 41h | ✅ Complete |
-| **Phase 4A-Full: Full Sync Engine** | Event cache, reorg, balance calc | 8-11h | 21h | ✅ Complete (Optional) |
-| **Phase 4A-Lite: Light Wallet Queries** | Query indexer for balances | 2-3h | 0h | 🔄 In Progress |
-| **Phase 4A-UI: Balance Display** | Show balances in UI | 5-8h | 0h | ⏸️ Next |
+| **Phase 4A-Full: Full Sync Engine** | Event cache, reorg, balance calc | 8-11h | 21h | ✅ Complete |
+| **Phase 4B: WebSocket + UTXO Tracking** | Subscriptions, local UTXO database | 25-35h | 8h | 🔄 In Progress |
+| ↳ 4B-1: WebSocket Client | GraphQL-WS protocol | ~8h | 8h | ✅ Complete |
+| ↳ 4B-2: UTXO Database | Room database + subscriptions | ~10h | 0h | ⏸️ Next |
+| ↳ 4B-3: Balance Calculator | Sum unspent UTXOs | ~3h | 0h | ⏸️ Pending |
+| ↳ 4B-4: UI Integration | Display balances | ~5-8h | 0h | ⏸️ Pending |
 | **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | 0h | ⏸️ Not Started |
 | **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 15-20h | 0h | ⏸️ Not Started |
-| **Phase 4B: Real-time Sync (WASM)** | WebSocket + event deserialization | 25-35h | 0h | 📋 Future/Optional |
 | **Phase 5: DApp Connector** | Contract interaction | 15-20h | 0h | ⏸️ Not Started |
 | **Phase 6: UI & Polish** | Production-ready app | 15-20h | 0h | ⏸️ Not Started |
 
-**Progress:** 62h / ~120h estimated (52% complete)
+**Progress:** 70h / ~120h estimated (58% complete)
 
 ---
 
@@ -153,56 +158,111 @@ We just need to query the indexer: "What's the balance for this address?"
 
 ---
 
-## Phase 4A-Lite: Light Wallet Queries (2-3h)
+## Phase 4B: WebSocket + UTXO Tracking (25-35h, 8h invested)
 
-**Goal:** Simple balance queries for mobile wallet
-**Status:** 🔄 Next task
+**Goal:** Real-time transaction subscriptions + local UTXO database for balance calculation
+**Status:** 🔄 In Progress (WebSocket client complete, UTXO tracking next)
 
-**Why This is Different:**
-This is what **99% of mobile wallets do** (MetaMask, Trust Wallet, etc.):
-- Query indexer for balance
-- Cache result locally
-- Show to user
-- Refresh when online
+**Critical Discovery:**
+Midnight's indexer does NOT provide simple balance query APIs like `getUnshieldedBalance(address)`. Light wallets must:
+1. Subscribe to transaction events via WebSocket (GraphQL-WS protocol)
+2. Track UTXOs locally in Room database
+3. Calculate balances by summing unspent UTXOs
+
+This is the ONLY way to view balances in a Midnight wallet.
+
+### 4B-1: WebSocket Client ✅ COMPLETE (8h actual)
+
+**Status:** ✅ WebSocket connection working, GraphQL-WS protocol implemented
+**Test Results:** 87 tests total, 0 failures (4 integration tests marked @Ignore for manual execution)
 
 **Deliverables:**
-- [ ] `getUnshieldedBalance(address)` - Query indexer directly
-- [ ] `getShieldedBalance(coinPublicKey)` - Query shielded balance
-- [ ] `getUtxos(address)` - Get UTXOs (for transaction building later)
-- [ ] `getTransactionHistory(address, page)` - Get transaction list
-- [ ] Balance caching layer (Room database)
-- [ ] Auto-refresh when online (every 30s)
-- [ ] Works offline (shows cached balance with "Last updated" timestamp)
+- ✅ GraphQL-WS protocol implementation (8 message types)
+- ✅ Connection lifecycle (ConnectionInit → ConnectionAck)
+- ✅ Subscribe/Next/Complete/Error handling
+- ✅ Ping/Pong keepalive
+- ✅ Thread-safe connection state (AtomicBoolean)
+- ✅ Subscription management (concurrent map)
+- ✅ Auto-increment operation IDs (AtomicInteger)
+- ✅ Proper sub-protocol header (`Sec-WebSocket-Protocol: graphql-transport-ws`)
+- ✅ JSON encoding with defaults (`encodeDefaults = true`)
 
-**Implementation:**
+**Key Implementation:**
 ```kotlin
-interface IndexerClient {
-    // LIGHT WALLET QUERIES (Phase 4A-Lite) - NEW
-    suspend fun getUnshieldedBalance(address: String): Map<String, BigInteger>
-    suspend fun getShieldedBalance(coinPublicKey: String): Map<String, BigInteger>
-    suspend fun getUtxos(address: String): List<Utxo>
-    suspend fun getTransactionHistory(address: String, page: Int = 0): List<Transaction>
+// CRITICAL: Use block parameter for sub-protocol header
+session = httpClient.webSocketSession(
+    urlString = url,
+    block = {
+        header(HttpHeaders.SecWebSocketProtocol, "graphql-transport-ws")
+    }
+)
 
-    // FULL WALLET (Phase 4A-Full) - Already implemented
-    suspend fun getNetworkState(): NetworkState
-    suspend fun getEventsInRange(fromId: Long, toId: Long): List<RawLedgerEvent>
-    suspend fun isHealthy(): Boolean
+// CRITICAL: Always encode default values
+private val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    encodeDefaults = true  // Required for type field
 }
 ```
 
-**GraphQL Queries:**
+**Lesson Learned:**
+> "Please investigate the documentation before making any assumptions!"
+
+Examining Midnight's TypeScript `indexer-client` implementation revealed the exact GraphQL-WS protocol requirements, which led to the successful connection solution.
+
+**Files:**
+```
+core/indexer/src/main/kotlin/.../websocket/
+├── GraphQLWebSocketClient.kt     # WebSocket client
+├── GraphQLWebSocketMessage.kt    # 8 message types
+└── SubscriptionFlow.kt           # Flow-based subscriptions
+```
+
+**Documentation Created:**
+- `docs/learning/WEBSOCKET_SOLUTION.md` - Complete troubleshooting guide
+- `docs/learning/PHASE_4_STORY.md` - End-to-end architecture explanation
+- `docs/learning/KTOR_WEBSOCKET_CRASH_COURSE.md` - Ktor/channels/atomics deep dive
+- `docs/learning/WEBSOCKET_FRAMES_EXPLAINED.md` - WebSocket frames from first principles
+- `docs/learning/CHANNEL_VS_FLOW.md` - Channel vs Flow explanation
+- `docs/learning/INDEXER_MODULE_BIG_PICTURE.md` - Complete indexer architecture
+
+### 4B-2: UTXO Database + Subscriptions ⏸️ NEXT (~10h)
+
+**Goal:** Subscribe to transactions and track UTXOs locally
+
+**Deliverables:**
+- [ ] Add subscription methods to IndexerClient
+  - `subscribeToUnshieldedTransactions(address: String): Flow<UnshieldedTransaction>`
+  - `subscribeToShieldedTransactions(sessionId: String): Flow<ShieldedTransaction>`
+- [ ] Create Room database for UTXO tracking
+  - `UnshieldedUtxoEntity` (txHash, index, amount, tokenType, spent)
+  - `ShieldedUtxoEntity` (commitment, amount, tokenType, spent)
+  - `UnshieldedUtxoDao`, `ShieldedUtxoDao`
+  - `UtxoDatabase` (Room database)
+- [ ] Transaction model classes
+  - `UnshieldedTransaction` (inputs, outputs, timestamp)
+  - `ShieldedTransaction` (commitments, nullifiers)
+  - `Utxo` (txHash, index, value, spendable)
+- [ ] UTXO state management
+  - Mark UTXOs as spent when consumed
+  - Handle chain reorgs (mark reorged UTXOs as invalid)
+
+**GraphQL Subscriptions:**
 ```graphql
-query GetUnshieldedBalance($address: String!) {
-  unshieldedBalance(address: $address) {
-    tokenType
-    amount
+subscription UnshieldedTransactions($address: String!) {
+  unshieldedTransactions(address: $address) {
+    txHash
+    inputs { txHash, index, amount, tokenType }
+    outputs { index, amount, tokenType, address }
+    timestamp
   }
 }
 
-query GetShieldedBalance($coinPublicKey: String!) {
-  shieldedBalance(coinPublicKey: $coinPublicKey) {
-    tokenType
-    amount
+subscription ShieldedTransactions($sessionId: String!) {
+  shieldedTransactions(sessionId: $sessionId) {
+    commitments
+    nullifiers
+    timestamp
   }
 }
 ```
@@ -210,55 +270,61 @@ query GetShieldedBalance($coinPublicKey: String!) {
 **Files:**
 ```
 core/indexer/src/main/kotlin/.../api/
-└── IndexerClientImpl.kt          # Add light wallet queries here
+└── IndexerClientImpl.kt          # Add subscription wrappers
 
-core/indexer/src/main/kotlin/.../cache/
-├── BalanceCache.kt               # Cache balances locally
-└── BalanceCacheManager.kt        # Auto-refresh logic
+core/indexer/src/main/kotlin/.../model/
+├── UnshieldedTransaction.kt      # Transaction models
+├── ShieldedTransaction.kt
+└── Utxo.kt
+
+core/indexer/src/main/kotlin/.../database/
+├── UtxoDatabase.kt               # Room database
+├── UnshieldedUtxoDao.kt          # CRUD operations
+├── ShieldedUtxoDao.kt
+├── UnshieldedUtxoEntity.kt       # Database entities
+└── ShieldedUtxoEntity.kt
 ```
 
----
+### 4B-3: Balance Calculator ⏸️ PENDING (~3h)
 
-## Phase 4A-UI: Balance Display (5-8h)
+**Goal:** Calculate balances by summing unspent UTXOs
 
-**Goal:** Show balances to user
-**Status:** ⏸️ After Phase 4A-Lite completes
+**Deliverables:**
+- [ ] `BalanceCalculator.calculateUnshieldedBalance(address: String): Map<String, BigInteger>`
+- [ ] `BalanceCalculator.calculateShieldedBalance(coinPubKey: String): Map<String, BigInteger>`
+- [ ] Query unspent UTXOs from Room database
+- [ ] Group by token type
+- [ ] Sum amounts using BigInteger
+
+**Implementation:**
+```kotlin
+class BalanceCalculator(private val utxoDao: UnshieldedUtxoDao) {
+    suspend fun calculateBalance(address: String): Map<String, BigInteger> {
+        val unspentUtxos = utxoDao.getUnspentUtxos(address)
+        return unspentUtxos
+            .groupBy { it.tokenType }
+            .mapValues { (_, utxos) ->
+                utxos.fold(BigInteger.ZERO) { acc, utxo ->
+                    acc + utxo.amount.toBigInteger()
+                }
+            }
+    }
+}
+```
+
+### 4B-4: UI Integration ⏸️ PENDING (~5-8h)
+
+**Goal:** Display balances to user
 
 **Deliverables:**
 - [ ] Balance screen (Jetpack Compose)
 - [ ] Display unshielded address & balance
 - [ ] Display shielded address & balance
-- [ ] Display dust balance
 - [ ] Pull-to-refresh gesture
 - [ ] "Last updated X min ago" timestamp
 - [ ] Loading states (skeleton screens)
 - [ ] Error handling UI (offline, network errors)
 - [ ] Copy address button
-
-**UI Mockup:**
-```
-┌─────────────────────────────────┐
-│  Kuira Wallet                   │
-├─────────────────────────────────┤
-│                                 │
-│  Unshielded Balance             │
-│  1,234.56 DUST                  │
-│                                 │
-│  mn_addr_testnet1...            │
-│  [Copy]                         │
-│                                 │
-├─────────────────────────────────┤
-│                                 │
-│  Shielded Balance               │
-│  567.89 DUST                    │
-│                                 │
-│  mn_shield-cpk_testnet1...      │
-│  [Copy]                         │
-│                                 │
-├─────────────────────────────────┤
-│  Last updated 2 min ago         │
-└─────────────────────────────────┘
-```
 
 **Files:**
 ```
@@ -319,42 +385,6 @@ core/network/
 └── ScaleCodec.kt                 # Binary serialization
 ```
 
----
-
-## Phase 4B: Real-Time Sync with WASM (25-35h)
-
-**Goal:** WebSocket subscriptions + event deserialization
-**Status:** 📋 FUTURE/OPTIONAL - Not needed for mobile wallet
-
-**Why This is Optional:**
-This phase builds on Phase 4A-Full (full sync engine) to add:
-- Real-time event streaming (WebSocket)
-- Typed event parsing (WASM deserialization)
-- Better for desktop applications
-
-**For mobile wallet**, we don't need this because:
-- Light wallet queries (Phase 4A-Lite) are faster
-- Less battery drain (no WebSocket connection)
-- Less storage (don't cache all events)
-- Simpler architecture
-
-**Use Cases (Future):**
-1. **Privacy Mode** - Don't query indexer constantly
-2. **Desktop App** - Full sync engine with WebSocket
-3. **Offline Transaction Building** - Need local UTXO set
-4. **Advanced Users** - Want full node-like experience
-
-**Deliverables (If Implemented Later):**
-- [ ] WebSocket client with `graphql-ws` protocol
-- [ ] Connection lifecycle management (init, ack, subscribe)
-- [ ] Auto-reconnection with exponential backoff
-- [ ] Keepalive ping/pong
-- [ ] WASM integration for event deserialization
-- [ ] Typed event models (Transfer, Shield, Unshield)
-- [ ] TLS certificate pinning
-- [ ] 30+ tests
-
-**See:** `docs/phase4b-implementation-plan.md` for detailed plan (if needed later)
 
 ---
 

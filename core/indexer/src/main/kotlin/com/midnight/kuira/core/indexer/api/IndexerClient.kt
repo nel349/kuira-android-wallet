@@ -3,6 +3,7 @@ package com.midnight.kuira.core.indexer.api
 import com.midnight.kuira.core.indexer.model.BlockInfo
 import com.midnight.kuira.core.indexer.model.NetworkState
 import com.midnight.kuira.core.indexer.model.RawLedgerEvent
+import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -23,6 +24,40 @@ import kotlinx.coroutines.flow.Flow
  * @see IndexerClientImpl for implementation details
  */
 interface IndexerClient {
+
+    // ==================== UTXO TRACKING (Phase 4B) ====================
+
+    /**
+     * Subscribe to unshielded transactions for an address.
+     *
+     * Returns a Flow of updates containing:
+     * - Transaction details (created/spent UTXOs)
+     * - Progress updates (highest transaction ID)
+     *
+     * **GraphQL Subscription:**
+     * ```graphql
+     * subscription UnshieldedTransactions($address: UnshieldedAddress!, $transactionId: Int) {
+     *   unshieldedTransactions(address: $address, transactionId: $transactionId) {
+     *     ... on UnshieldedTransaction {
+     *       transaction { id, hash, timestamp }
+     *       createdUtxos { owner, value, tokenType, outputIndex }
+     *       spentUtxos { owner, value, tokenType, outputIndex }
+     *     }
+     *     ... on UnshieldedTransactionsProgress {
+     *       highestTransactionId
+     *     }
+     *   }
+     * }
+     * ```
+     *
+     * @param address Unshielded address to track
+     * @param transactionId Start from this transaction ID (use last processed ID to resume)
+     * @return Flow of transaction updates (both transactions and progress)
+     */
+    fun subscribeToUnshieldedTransactions(
+        address: String,
+        transactionId: Int? = null
+    ): Flow<UnshieldedTransactionUpdate>
 
     // ==================== SYNC ENGINE (Phase 4A) ====================
 
