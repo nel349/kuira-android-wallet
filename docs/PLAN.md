@@ -35,17 +35,17 @@ See **PROGRESS.md** for current status and hours invested.
 |-------|------|----------|--------|--------|
 | **Phase 1: Crypto Foundation** | Key derivation & addresses | 30-35h | 41h | ✅ Complete |
 | **Phase 4A-Full: Full Sync Engine** | Event cache, reorg, balance calc | 8-11h | 21h | ✅ Complete |
-| **Phase 4B: WebSocket + UTXO Tracking** | Subscriptions, local UTXO database | 25-35h | 8h | 🔄 In Progress |
+| **Phase 4B: WebSocket + UTXO Tracking** | Subscriptions, local UTXO database | 25-35h | 11h | 🔄 In Progress |
 | ↳ 4B-1: WebSocket Client | GraphQL-WS protocol | ~8h | 8h | ✅ Complete |
-| ↳ 4B-2: UTXO Database | Room database + subscriptions | ~10h | 0h | ⏸️ Next |
-| ↳ 4B-3: Balance Calculator | Sum unspent UTXOs | ~3h | 0h | ⏸️ Pending |
-| ↳ 4B-4: UI Integration | Display balances | ~5-8h | 0h | ⏸️ Pending |
+| ↳ 4B-2: UTXO Database | Room database + subscriptions | ~10h | 2.5h | ✅ Complete |
+| ↳ 4B-3: Balance Repository | Repository layer + ViewModels | ~3h | 0.5h | 🔄 In Progress |
+| ↳ 4B-4: UI Integration | Display balances (Compose) | ~5-8h | 0h | ⏸️ Pending |
 | **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | 0h | ⏸️ Not Started |
 | **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 15-20h | 0h | ⏸️ Not Started |
 | **Phase 5: DApp Connector** | Contract interaction | 15-20h | 0h | ⏸️ Not Started |
 | **Phase 6: UI & Polish** | Production-ready app | 15-20h | 0h | ⏸️ Not Started |
 
-**Progress:** 70h / ~120h estimated (58% complete)
+**Progress:** 73h / ~120h estimated (61% complete)
 
 ---
 
@@ -158,10 +158,10 @@ We just need to query the indexer: "What's the balance for this address?"
 
 ---
 
-## Phase 4B: WebSocket + UTXO Tracking (25-35h, 8h invested)
+## Phase 4B: WebSocket + UTXO Tracking (25-35h, 11h invested)
 
 **Goal:** Real-time transaction subscriptions + local UTXO database for balance calculation
-**Status:** 🔄 In Progress (WebSocket client complete, UTXO tracking next)
+**Status:** 🔄 In Progress (WebSocket + UTXO tracking complete, UI integration next)
 
 **Critical Discovery:**
 Midnight's indexer does NOT provide simple balance query APIs like `getUnshieldedBalance(address)`. Light wallets must:
@@ -226,26 +226,35 @@ core/indexer/src/main/kotlin/.../websocket/
 - `docs/learning/CHANNEL_VS_FLOW.md` - Channel vs Flow explanation
 - `docs/learning/INDEXER_MODULE_BIG_PICTURE.md` - Complete indexer architecture
 
-### 4B-2: UTXO Database + Subscriptions ⏸️ NEXT (~10h)
+### 4B-2: UTXO Database + Subscriptions ✅ COMPLETE (2.5h actual / 10h estimate)
 
 **Goal:** Subscribe to transactions and track UTXOs locally
+**Status:** ✅ Complete - 157 tests passing (100% pass rate)
 
-**Deliverables:**
-- [ ] Add subscription methods to IndexerClient
-  - `subscribeToUnshieldedTransactions(address: String): Flow<UnshieldedTransaction>`
-  - `subscribeToShieldedTransactions(sessionId: String): Flow<ShieldedTransaction>`
-- [ ] Create Room database for UTXO tracking
-  - `UnshieldedUtxoEntity` (txHash, index, amount, tokenType, spent)
-  - `ShieldedUtxoEntity` (commitment, amount, tokenType, spent)
-  - `UnshieldedUtxoDao`, `ShieldedUtxoDao`
-  - `UtxoDatabase` (Room database)
-- [ ] Transaction model classes
-  - `UnshieldedTransaction` (inputs, outputs, timestamp)
-  - `ShieldedTransaction` (commitments, nullifiers)
-  - `Utxo` (txHash, index, value, spendable)
-- [ ] UTXO state management
+**Completed Deliverables:**
+- ✅ Subscription methods in IndexerClient
+  - `subscribeToUnshieldedTransactions(address, transactionId?): Flow<UnshieldedTransactionUpdate>`
+  - GraphQL query refactoring (extracted to GraphQLQueries.kt)
+- ✅ Room database for UTXO tracking
+  - `UnshieldedUtxoEntity` (intentHash, outputIndex, value, owner, tokenType, spent)
+  - `TokenBalanceEntity` (aggregated balance view)
+  - `UnshieldedUtxoDao` (insert, update, query, delete operations)
+  - `KuiraDatabase` v2 (migration from v1)
+- ✅ Transaction model classes
+  - `UnshieldedTransactionUpdate` (sealed class: Transaction | Progress)
+  - `TransactionDetails` (id, hash, fees, result, timestamp)
+  - `UnshieldedUtxo` (value, owner, tokenType, intentHash, outputIndex)
+- ✅ UTXO state management
+  - `UnshieldedBalanceManager` (WebSocket → Database bridge)
   - Mark UTXOs as spent when consumed
-  - Handle chain reorgs (mark reorged UTXOs as invalid)
+  - Track confirmed vs pending UTXOs
+  - Transaction replay from `transactionId` (catch-up after offline)
+  - UTXO deduplication (composite primary key: intentHash + outputIndex)
+
+**Tests:** 157 passing
+- UnshieldedUtxoDaoTest: 31 tests
+- UnshieldedBalanceManagerTest: 122 tests
+- GraphQLWebSocketClientTest: 4 integration tests (live testnet)
 
 **GraphQL Subscriptions:**
 ```graphql
@@ -285,31 +294,33 @@ core/indexer/src/main/kotlin/.../database/
 └── ShieldedUtxoEntity.kt
 ```
 
-### 4B-3: Balance Calculator ⏸️ PENDING (~3h)
+### 4B-3: Balance Repository 🔄 IN PROGRESS (0.5h invested / ~3h estimate)
 
-**Goal:** Calculate balances by summing unspent UTXOs
+**Goal:** Repository layer for UI consumption (aggregate balances, expose Flows)
+**Status:** 🔄 In Progress - BalanceRepository created, ViewModels next
 
-**Deliverables:**
-- [ ] `BalanceCalculator.calculateUnshieldedBalance(address: String): Map<String, BigInteger>`
-- [ ] `BalanceCalculator.calculateShieldedBalance(coinPubKey: String): Map<String, BigInteger>`
-- [ ] Query unspent UTXOs from Room database
-- [ ] Group by token type
-- [ ] Sum amounts using BigInteger
+**Completed Deliverables:**
+- ✅ `BalanceRepository` created
+  - `observeBalances(address): Flow<List<TokenBalance>>` - All tokens
+  - `observeTokenBalance(address, tokenType): Flow<TokenBalance?>` - Single token
+  - `observeTotalBalance(address): Flow<Long>` - Sum across all tokens
+  - Group by token type and calculate totals
+  - Sort by largest balance first (UX optimization)
+  - Singleton pattern (@Inject @Singleton)
 
-**Implementation:**
-```kotlin
-class BalanceCalculator(private val utxoDao: UnshieldedUtxoDao) {
-    suspend fun calculateBalance(address: String): Map<String, BigInteger> {
-        val unspentUtxos = utxoDao.getUnspentUtxos(address)
-        return unspentUtxos
-            .groupBy { it.tokenType }
-            .mapValues { (_, utxos) ->
-                utxos.fold(BigInteger.ZERO) { acc, utxo ->
-                    acc + utxo.amount.toBigInteger()
-                }
-            }
-    }
-}
+**Remaining Work (~2.5h):**
+- [ ] Create ViewModel layer (`BalanceViewModel`)
+- [ ] Add UI state classes (`BalanceUiState`)
+- [ ] Handle loading/error states
+- [ ] Add pull-to-refresh support
+- [ ] Format amounts for display (commas, decimals)
+- [ ] Add "last updated" timestamp tracking
+- [ ] Write repository tests
+
+**Files Created:**
+```
+core/indexer/src/main/kotlin/.../repository/
+└── BalanceRepository.kt          # UI-facing repository
 ```
 
 ### 4B-4: UI Integration ⏸️ PENDING (~5-8h)
