@@ -13,14 +13,10 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
-import io.ktor.websocket.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -41,52 +37,74 @@ import kotlinx.serialization.json.long
  * - TLS certificate pinning enabled for production
  * - Development mode allows localhost HTTP (for local testing)
  *
- * @param baseUrl Indexer API base URL (e.g., "https://indexer.midnight.network/api/v3")
+ * @param httpClient HTTP client for making requests (injectable for testing)
+ * @param baseUrl Indexer API base URL (e.g., "https://indexer.testnet-02.midnight.network/api/v3")
  * @param pinnedCertificates List of SHA-256 certificate fingerprints for pinning (production only)
  * @param developmentMode If true, allows HTTP to localhost (INSECURE - testing only)
  */
 class IndexerClientImpl(
-    private val baseUrl: String = "https://indexer.midnight.network/api/v3",
+    private val httpClient: HttpClient,
+    private val baseUrl: String = "https://indexer.testnet-02.midnight.network/api/v3",
     private val pinnedCertificates: List<String> = emptyList(),
     private val developmentMode: Boolean = false
 ) : IndexerClient {
+
+    /**
+     * Convenience constructor for production use (creates default HTTP client).
+     */
+    constructor(
+        baseUrl: String = "https://indexer.testnet-02.midnight.network/api/v3",
+        pinnedCertificates: List<String> = emptyList(),
+        developmentMode: Boolean = false
+    ) : this(
+        httpClient = createDefaultHttpClient(),
+        baseUrl = baseUrl,
+        pinnedCertificates = pinnedCertificates,
+        developmentMode = developmentMode
+    )
+
+    companion object {
+        private fun createDefaultHttpClient() = HttpClient(CIO) {
+            install(ContentNegotiation) {
+                json(Json {
+                    prettyPrint = true
+                    isLenient = true
+                    ignoreUnknownKeys = true
+                })
+            }
+            install(Logging) {
+                logger = Logger.DEFAULT
+                level = LogLevel.INFO
+            }
+            install(WebSockets)
+
+            // Timeout configuration
+            install(HttpTimeout) {
+                requestTimeoutMillis = 30_000 // 30 seconds
+                connectTimeoutMillis = 10_000 // 10 seconds
+                socketTimeoutMillis = 30_000 // 30 seconds
+            }
+
+            // Response validation (catch non-2xx responses)
+            expectSuccess = true
+
+            // TLS/SSL Configuration
+            // Note: Certificate pinning documented in TlsConfiguration.kt
+            // Phase 4B: Implement using OkHttp engine or custom TrustManager
+            engine {
+                https {
+                    // TLS configuration placeholder
+                    // Phase 4A: No certificate pinning (documented)
+                    // Phase 4B: Add certificate pinning implementation here
+                }
+            }
+        }
+    }
 
     private val json = Json {
         prettyPrint = true
         isLenient = true
         ignoreUnknownKeys = true
-    }
-
-    private val httpClient = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json(json)
-        }
-        install(Logging) {
-            logger = Logger.DEFAULT
-            level = LogLevel.INFO
-        }
-        install(WebSockets)
-
-        // Timeout configuration
-        install(HttpTimeout) {
-            requestTimeoutMillis = 30_000 // 30 seconds
-            connectTimeoutMillis = 10_000 // 10 seconds
-            socketTimeoutMillis = 30_000 // 30 seconds
-        }
-
-        // Response validation (catch non-2xx responses)
-        expectSuccess = true
-
-        // TLS/SSL Configuration
-        // Note: Certificate pinning documented in TlsConfiguration.kt
-        // Phase 4B: Implement using OkHttp engine or custom TrustManager
-        engine {
-            https {
-                // TLS configuration placeholder
-                // Phase 4A: No certificate pinning (documented)
-                // Phase 4B: Add certificate pinning implementation here
-            }
-        }
     }
 
     init {
@@ -116,6 +134,8 @@ class IndexerClientImpl(
         val query: String,
         val variables: Map<String, String>? = null
     )
+
+    // ==================== SYNC ENGINE (Phase 4A) ====================
 
     override fun subscribeToZswapEvents(fromId: Long?): Flow<RawLedgerEvent> = flow {
         val subscription = """

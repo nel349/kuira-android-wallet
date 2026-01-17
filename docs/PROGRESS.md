@@ -1,9 +1,9 @@
 # Kuira Wallet - Progress Tracker
 
-**Last Updated:** January 13, 2026
-**Current Phase:** Phase 1 Complete - Ready for Phase 2
-**Hours Invested:** 41h / ~115h estimated
-**Completion:** ~36%
+**Last Updated:** January 15, 2026
+**Current Phase:** Phase 4A-Lite (Light Wallet Queries) + UI
+**Hours Invested:** 62h / ~120h estimated
+**Completion:** ~52%
 
 ---
 
@@ -14,13 +14,177 @@
 | **Phase 1: Crypto Foundation** | ✅ **Complete** | 30-35h | 41h | 100% |
 | ↳ 1A: Unshielded Crypto | ✅ Complete | 20-25h | 30h | 100% |
 | ↳ 1B: Shielded Keys (JNI FFI) | ✅ Complete | 10-15h | 11h | 100% |
-| **Phase 2: Unshielded Transactions** | ⏸️ Not Started | 15-20h | 0h | 0% |
+| **Phase 4A-Full: Full Sync Engine** | ✅ **Complete (Optional)** | 8-11h | 21h | 100% |
+| **Phase 4A-Lite: Light Wallet Queries** | 🔄 **In Progress** | 2-3h | 0h | 0% |
+| **Phase 4A-UI: Balance Display** | ⏸️ Next | 5-8h | 0h | 0% |
 | **Phase 3: Shielded Transactions** | ⏸️ Not Started | 20-25h | 0h | 0% |
-| **Phase 4: Indexer Integration** | ⏸️ Not Started | 10-15h | 0h | 0% |
+| **Phase 2: Unshielded Transactions** | ⏸️ Not Started | 15-20h | 0h | 0% |
+| **Phase 4B: Real-time Sync (WASM)** | 📋 Future/Optional | 25-35h | 0h | 0% |
 | **Phase 5: DApp Connector** | ⏸️ Not Started | 15-20h | 0h | 0% |
 | **Phase 6: UI & Polish** | ⏸️ Not Started | 15-20h | 0h | 0% |
 
-**Next Milestone:** Begin Phase 2 (Unshielded Transactions)
+**Next Milestone:** Working balance viewer (7-11h remaining)
+
+---
+
+## Phase 4A-Full: Full Sync Engine ✅ COMPLETE (OPTIONAL)
+
+**Duration:** 21 hours (January 2026)
+**Goal:** Full wallet sync infrastructure (event caching, reorg detection, balance calculation)
+**Status:** ✅ Complete - Marked as optional/advanced feature
+**Note:** Built more than originally planned - full sync engine instead of light wallet queries
+
+### Completed Deliverables
+
+#### Indexer Client (HTTP Queries)
+- ✅ GraphQL HTTP client using Ktor
+- ✅ `getNetworkState()` - Current blockchain sync status
+- ✅ `getEventsInRange()` - Historical event fetching
+- ✅ `isHealthy()` - Health check endpoint
+- ✅ Retry policy with exponential backoff
+- ✅ Comprehensive error handling hierarchy
+- ✅ TLS/HTTPS configuration (certificate pinning ready)
+- **Tests:** 21 passing (RetryPolicyTest)
+
+**Files:**
+```
+core/indexer/src/main/kotlin/.../api/
+├── IndexerClient.kt              # Interface
+├── IndexerClientImpl.kt          # Ktor implementation
+├── IndexerExceptions.kt          # Error hierarchy
+└── RetryPolicy.kt                # Exponential backoff
+```
+
+#### Event Storage & Caching
+- ✅ In-memory event cache with LRU eviction
+- ✅ Bounded cache (DOS protection, max 10,000 events)
+- ✅ Thread-safe with Mutex (not ConcurrentHashMap)
+- ✅ getEventRange(), getLatestEventId(), getOldestEventId()
+- ✅ Access time tracking for LRU
+- **Tests:** 20 passing (InMemoryEventCacheTest)
+
+**Files:**
+```
+core/indexer/src/main/kotlin/.../storage/
+├── EventCache.kt                 # Interface
+└── InMemoryEventCache.kt         # LRU implementation
+```
+
+#### Blockchain Reorg Detection
+- ✅ Full reorg detection implementation
+- ✅ Shallow reorg handling (< finality threshold)
+- ✅ Deep reorg handling (> finality threshold)
+- ✅ Common ancestor finding
+- ✅ Block history with configurable depth
+- ✅ Flow-based reorg notifications
+- **Tests:** 16 passing (ReorgDetectorImplTest)
+
+**Files:**
+```
+core/indexer/src/main/kotlin/.../reorg/
+├── ReorgDetector.kt              # Interface
+├── ReorgDetectorImpl.kt          # Implementation
+├── ReorgEvent.kt                 # Sealed class (Shallow/Deep)
+└── ReorgConfig.kt                # Configuration
+```
+
+#### Balance Calculation
+- ✅ Balance calculator from events
+- ✅ Underflow detection (prevents double-spend)
+- ✅ Three balance types: shielded, unshielded, dust
+- ✅ BigInteger for financial calculations
+- ✅ Event ordering validation
+- **Tests:** 17 passing (BalanceCalculatorTest)
+
+**Files:**
+```
+core/wallet/src/main/kotlin/.../balance/
+└── BalanceCalculator.kt          # Event-based balance calculation
+```
+
+#### Data Model Validation
+- ✅ Input validation on all models
+- ✅ RawLedgerEvent validation (hex format, IDs)
+- ✅ BlockInfo validation (hash format, timestamps)
+- ✅ NetworkState validation (block heights)
+- **Tests:** 44 passing (26 indexer + 18 wallet validation tests)
+
+**Files:**
+```
+core/indexer/src/main/kotlin/.../model/
+├── RawLedgerEvent.kt             # Validated event model
+├── BlockInfo.kt                  # Validated block model
+└── NetworkState.kt               # Validated network state
+```
+
+### Test Summary
+
+**Total Tests:** 118 passing (100% pass rate)
+- InMemoryEventCacheTest: 20 tests ✅
+- ReorgDetectorImplTest: 16 tests ✅
+- RetryPolicyTest: 21 tests ✅
+- ModelValidationTest: 26 tests ✅
+- BalanceCalculatorTest: 17 tests ✅
+- LedgerEventValidationTest: 18 tests ✅
+
+**Coverage:**
+- Thread safety (concurrent operations)
+- Edge cases (reorgs, balance underflows)
+- Security (input validation, bounded cache)
+- Network resilience (retry logic)
+
+### Why This is "Optional"
+
+This is a **full wallet sync engine** designed for:
+- Privacy mode (don't query indexer constantly)
+- Offline transaction building (local UTXO set)
+- Desktop applications
+- Advanced users
+
+For **mobile balance viewing**, we only need light wallet queries (Phase 4A-Lite).
+
+**Decision:** Keep this code as "advanced feature" for future use. Build light wallet on top.
+
+---
+
+## Phase 4A-Lite: Light Wallet Queries 🔄 IN PROGRESS
+
+**Estimate:** 2-3h
+**Goal:** Simple balance queries for mobile wallet
+**Status:** Next task
+
+### Planned Deliverables
+
+- [ ] `getUnshieldedBalance(address)` - Query indexer for balance
+- [ ] `getShieldedBalance(coinPublicKey)` - Query shielded balance
+- [ ] `getUtxos(address)` - Get UTXOs for transaction building
+- [ ] `getTransactionHistory(address)` - Get transaction list
+- [ ] Balance caching (Room database)
+- [ ] Auto-refresh when online
+
+**Why This is Different from Phase 4A-Full:**
+- Query indexer directly (don't sync all events)
+- Cache only balances (not all events)
+- Fast and simple (mobile-optimized)
+- Works offline (shows cached balance)
+
+---
+
+## Phase 4A-UI: Balance Display ⏸️ NEXT
+
+**Estimate:** 5-8h
+**Goal:** Show balances to user
+**Status:** After Phase 4A-Lite completes
+
+### Planned Deliverables
+
+- [ ] Balance screen (Compose UI)
+- [ ] Display unshielded address & balance
+- [ ] Display shielded address & balance
+- [ ] Pull-to-refresh
+- [ ] "Last updated" timestamp
+- [ ] Loading states
+- [ ] Error handling UI
 
 ---
 

@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -57,10 +58,10 @@ dependencies {
     // Kotlinx Serialization for JSON
     implementation(libs.kotlinx.serialization.json)
 
-    // Room for local database (Phase 4B - KSP setup needed)
+    // Room for local database
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    // ksp(libs.room.compiler)  // Uncomment when adding KSP plugin
+    ksp(libs.room.compiler)
 
     // Hilt for dependency injection (will add later)
     // implementation(libs.hilt.android)
@@ -69,6 +70,9 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
+    testImplementation("org.mockito:mockito-core:5.7.0")
+    testImplementation("io.ktor:ktor-client-mock:2.3.7")
     testImplementation(project(":core:testing"))
 
     // Android Instrumentation Testing

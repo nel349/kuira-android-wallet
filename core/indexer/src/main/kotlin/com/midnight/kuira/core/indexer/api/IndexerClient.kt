@@ -8,18 +8,23 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Client for Midnight indexer GraphQL API (v3).
  *
- * Provides access to ledger events, blocks, and network state.
+ * Provides access to ledger events, blocks, and network state for light wallet implementation.
  *
- * **Phase 4A Implementation:**
- * - Fetches raw hex events from `zswapLedgerEvents` subscription
- * - Caches events locally
- * - Cannot deserialize yet (blocked by ledger 7.0.0)
+ * **Light Wallet Architecture:**
+ * - Subscribe to transaction events via WebSocket (Phase 4B)
+ * - Track UTXOs locally (Phase 4A sync engine)
+ * - Calculate balances from UTXO set
+ * - No full node required
  *
- * **GraphQL Endpoint:**
- * - HTTP: `http://localhost:8088/api/v3/graphql`
- * - WebSocket: `ws://localhost:8088/api/v3/graphql/ws`
+ * **GraphQL Endpoints:**
+ * - HTTP Queries: `https://indexer.testnet-02.midnight.network/api/v3/graphql`
+ * - WebSocket Subscriptions: `wss://indexer.testnet-02.midnight.network/api/v3/graphql/ws`
+ *
+ * @see IndexerClientImpl for implementation details
  */
 interface IndexerClient {
+
+    // ==================== SYNC ENGINE (Phase 4A) ====================
 
     /**
      * Subscribe to zswap ledger events.
