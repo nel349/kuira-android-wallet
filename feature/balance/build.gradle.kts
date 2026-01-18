@@ -1,13 +1,12 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.ksp)
     alias(libs.plugins.google.hilt)
+    alias(libs.plugins.ksp)
 }
 
 android {
-    namespace = "com.midnight.kuira.core.indexer"
+    namespace = "com.midnight.kuira.feature.balance"
     compileSdk = 36
 
     defaultConfig {
@@ -42,27 +41,14 @@ android {
 }
 
 dependencies {
-    // Core Android
+    // Core modules
+    implementation(project(":core:indexer"))
+
+    // Android Core
     implementation(libs.androidx.core.ktx)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-
-    // Ktor for HTTP client (GraphQL over HTTP)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
-    implementation(libs.ktor.client.logging)
-    implementation(libs.ktor.client.websockets)
-
-    // Kotlinx Serialization for JSON
-    implementation(libs.kotlinx.serialization.json)
-
-    // Room for local database
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
 
     // Hilt for dependency injection
     implementation(libs.hilt.android)
@@ -77,11 +63,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("org.mockito:mockito-core:5.7.0")
-    testImplementation("io.ktor:ktor-client-mock:2.3.7")
-    testImplementation(project(":core:testing"))
 
     // Android Instrumentation Testing
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(project(":core:testing"))
 }

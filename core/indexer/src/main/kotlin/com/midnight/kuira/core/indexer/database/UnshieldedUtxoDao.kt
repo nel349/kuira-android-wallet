@@ -93,6 +93,17 @@ interface UnshieldedUtxoDao {
     fun observeUnspentUtxos(address: String): Flow<List<UnshieldedUtxoEntity>>
 
     /**
+     * Get all pending UTXOs for an address (locked in pending transactions).
+     *
+     * Returns Flow for reactive updates. Only returns PENDING UTXOs.
+     * Excludes AVAILABLE and SPENT UTXOs.
+     *
+     * Matches Midnight SDK: Observable for pending UTXOs
+     */
+    @Query("SELECT * FROM unshielded_utxos WHERE owner = :address AND state = 'PENDING' ORDER BY token_type, ctime")
+    fun observePendingUtxos(address: String): Flow<List<UnshieldedUtxoEntity>>
+
+    /**
      * Get available UTXOs for a specific token type.
      *
      * Useful for displaying single token balance. Only returns AVAILABLE UTXOs.

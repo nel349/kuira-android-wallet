@@ -17,5 +17,8 @@ core/crypto/build/*
 core/testing/build/*
 .kotlin/
 .vscode/settings.json
+
+# Ignore build directories of specific modules
 core/indexer/build/*
 core/wallet/build/*
+feature/balance/build/*

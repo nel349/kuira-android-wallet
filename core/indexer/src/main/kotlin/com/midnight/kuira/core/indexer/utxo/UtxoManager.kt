@@ -126,10 +126,12 @@ class UtxoManager(
     }
 
     /**
-     * Observe balance changes for an address.
+     * Observe balance changes for an address (available UTXOs only).
      *
      * Returns Flow that emits new balance map whenever AVAILABLE UTXOs change.
      * Only includes AVAILABLE UTXOs, excludes PENDING and SPENT.
+     *
+     * Matches Midnight SDK: `getAvailableBalances()`
      *
      * @param address Unshielded address
      * @return Flow of balance maps (tokenType → balance)
@@ -143,6 +145,48 @@ class UtxoManager(
                         acc + BigInteger(utxo.value)
                     }
                 }
+        }
+    }
+
+    /**
+     * Observe pending balance for an address (locked in pending transactions).
+     *
+     * Returns Flow that emits balance map for UTXOs in PENDING state.
+     * These are UTXOs locked for pending transactions.
+     *
+     * Matches Midnight SDK: `getPendingBalances()`
+     *
+     * @param address Unshielded address
+     * @return Flow of pending balance maps (tokenType → balance)
+     */
+    fun observePendingBalance(address: String): Flow<Map<String, BigInteger>> {
+        return utxoDao.observePendingUtxos(address).map { utxos ->
+            utxos
+                .groupBy { it.tokenType }
+                .mapValues { (_, utxoList) ->
+                    utxoList.fold(BigInteger.ZERO) { acc, utxo ->
+                        acc + BigInteger(utxo.value)
+                    }
+                }
+        }
+    }
+
+    /**
+     * Observe UTXO counts per token type (available UTXOs only).
+     *
+     * Returns Flow that emits UTXO counts grouped by token type.
+     * Used for displaying "X UTXOs" in balance UI.
+     *
+     * Matches Midnight SDK: `.length` on `getAvailableCoins()` result
+     *
+     * @param address Unshielded address
+     * @return Flow of UTXO count maps (tokenType → count)
+     */
+    fun observeUtxoCounts(address: String): Flow<Map<String, Int>> {
+        return utxoDao.observeUnspentUtxos(address).map { utxos ->
+            utxos
+                .groupBy { it.tokenType }
+                .mapValues { (_, utxoList) -> utxoList.size }
         }
     }
 
