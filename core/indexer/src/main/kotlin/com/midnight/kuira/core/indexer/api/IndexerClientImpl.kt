@@ -16,8 +16,8 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -108,6 +108,7 @@ class IndexerClientImpl(
         prettyPrint = true
         isLenient = true
         ignoreUnknownKeys = true
+        classDiscriminator = "__typename"  // Use GraphQL's __typename field for polymorphism
     }
 
     init {
@@ -171,23 +172,39 @@ class IndexerClientImpl(
             }
         }
 
-        // Subscribe using centralized query
-        return getOrCreateWsClient()
-            .subscribe(GraphQLQueries.SUBSCRIBE_UNSHIELDED_TRANSACTIONS, variables)
-            .map { jsonElement ->
-                // GraphQL response format: {data: {unshieldedTransactions: {...}}}
-                // Extract the unshieldedTransactions field from data
-                val unshieldedTransactionsJson = jsonElement
-                    .jsonObject["data"]
-                    ?.jsonObject?.get("unshieldedTransactions")
-                    ?: throw InvalidResponseException("Missing unshieldedTransactions in response")
+        // Subscribe using centralized query with auto-connect
+        return flow {
+            val client = getOrCreateWsClient()
 
-                // Parse to UnshieldedTransactionUpdate
-                json.decodeFromJsonElement(
-                    UnshieldedTransactionUpdate.serializer(),
-                    unshieldedTransactionsJson
-                )
+            // Connect if not already connected (idempotent via GraphQLWebSocketClient)
+            try {
+                client.connect()
+            } catch (e: IllegalStateException) {
+                // Already connected - this is fine, continue
+                if (e.message?.contains("Already connected") != true) {
+                    throw e
+                }
             }
+
+            // Now subscribe and emit all updates
+            client.subscribe(GraphQLQueries.SUBSCRIBE_UNSHIELDED_TRANSACTIONS, variables)
+                .collect { jsonElement ->
+                    // GraphQL response format: {data: {unshieldedTransactions: {...}}}
+                    // Extract the unshieldedTransactions field from data
+                    val unshieldedTransactionsJson = jsonElement
+                        .jsonObject["data"]
+                        ?.jsonObject?.get("unshieldedTransactions")
+                        ?: throw InvalidResponseException("Missing unshieldedTransactions in response")
+
+                    // Parse to UnshieldedTransactionUpdate
+                    val update = json.decodeFromJsonElement(
+                        UnshieldedTransactionUpdate.serializer(),
+                        unshieldedTransactionsJson
+                    )
+                    android.util.Log.d("IndexerClient", "Parsed update type: ${update::class.simpleName}")
+                    emit(update)
+                }
+        }
     }
 
     // ==================== SYNC ENGINE (Phase 4A) ====================

@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -156,7 +158,20 @@ class GraphQLWebSocketClient(
             val payload = SubscribePayload(
                 query = query,
                 operationName = operationName,
-                variables = variables?.let { json.encodeToJsonElement(kotlinx.serialization.serializer(), it) as kotlinx.serialization.json.JsonObject }
+                variables = variables?.let { varsMap ->
+                    // Manually build JsonObject from variables map
+                    // Variables are expected to be String values (or serializable primitives)
+                    buildJsonObject {
+                        varsMap.forEach { (key, value) ->
+                            when (value) {
+                                is String -> put(key, JsonPrimitive(value))
+                                is Number -> put(key, JsonPrimitive(value))
+                                is Boolean -> put(key, JsonPrimitive(value))
+                                else -> put(key, JsonPrimitive(value.toString()))
+                            }
+                        }
+                    }
+                }
             )
             sendMessage(GraphQLWebSocketMessage.Subscribe(id = operationId, payload = payload))
 
@@ -212,10 +227,13 @@ class GraphQLWebSocketClient(
             is GraphQLWebSocketMessage.Pong -> json.encodeToString(message)
             else -> throw IllegalArgumentException("Cannot send message type: ${message.type}")
         }
+        android.util.Log.d("GraphQLWebSocket", "⬆️ Sending: ${json.take(200)}")
         session?.send(Frame.Text(json))
     }
 
     private fun parseMessage(text: String): GraphQLWebSocketMessage {
+        android.util.Log.d("GraphQLWebSocket", "⬇️ Received: ${text.take(200)}")
+
         // Parse type field first
         val jsonElement = json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject
         val type = jsonElement["type"]?.toString()?.trim('"') ?: throw IllegalArgumentException("Missing type field")

@@ -29,11 +29,11 @@ object GraphQLQueries {
                 hash
                 type: __typename
                 protocolVersion
-                identifiers
                 block {
                   timestamp
                 }
                 ... on RegularTransaction {
+                  identifiers
                   fees {
                     paidFees
                     estimatedFees

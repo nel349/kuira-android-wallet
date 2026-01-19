@@ -48,6 +48,9 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // DataStore for sync state persistence
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
     // Ktor for HTTP client (GraphQL over HTTP)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
@@ -77,6 +80,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("org.mockito:mockito-core:5.7.0")
+    testImplementation("io.mockk:mockk:1.13.8")  // MockK for Kotlin
     testImplementation("io.ktor:ktor-client-mock:2.3.7")
     testImplementation(project(":core:testing"))
 
@@ -84,4 +88,9 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(project(":core:testing"))
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+
+    // OkHttp for integration tests (Indexer API calls)
+    androidTestImplementation("com.squareup.okhttp3:okhttp:4.12.0")
+    androidTestImplementation(libs.kotlinx.serialization.json)
 }
