@@ -15,7 +15,9 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
@@ -168,7 +170,7 @@ class IndexerClientImpl(
         val variables = buildMap {
             put("address", address)
             if (transactionId != null) {
-                put("transactionId", transactionId.toString())
+                put("transactionId", transactionId)
             }
         }
 
@@ -187,7 +189,10 @@ class IndexerClientImpl(
             }
 
             // Now subscribe and emit all updates
+            // IMPORTANT: buffer() prevents message loss when rapid transactions arrive
+            // Without buffering, if processing TX N is slow, TX N+1 might be dropped
             client.subscribe(GraphQLQueries.SUBSCRIBE_UNSHIELDED_TRANSACTIONS, variables)
+                .buffer(Channel.UNLIMITED)
                 .collect { jsonElement ->
                     // GraphQL response format: {data: {unshieldedTransactions: {...}}}
                     // Extract the unshieldedTransactions field from data

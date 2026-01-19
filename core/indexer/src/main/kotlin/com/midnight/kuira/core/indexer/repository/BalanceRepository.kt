@@ -1,6 +1,7 @@
 package com.midnight.kuira.core.indexer.repository
 
 import com.midnight.kuira.core.indexer.model.TokenBalance
+import com.midnight.kuira.core.indexer.model.TokenTypeMapper
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -63,7 +64,7 @@ class BalanceRepository @Inject constructor(
             // Convert Map<String, BigInteger> to List<TokenBalance> with actual UTXO counts
             balanceMap.entries.map { entry ->
                 TokenBalance(
-                    tokenType = entry.key,
+                    tokenType = TokenTypeMapper.toDisplaySymbol(entry.key),
                     balance = entry.value,
                     utxoCount = utxoCounts[entry.key] ?: 0
                 )
@@ -88,7 +89,7 @@ class BalanceRepository @Inject constructor(
             .map { balanceMap ->
                 balanceMap.entries.map { entry ->
                     TokenBalance(
-                        tokenType = entry.key,
+                        tokenType = TokenTypeMapper.toDisplaySymbol(entry.key),
                         balance = entry.value,
                         utxoCount = 0  // Pending UTXO counts less important for UI
                     )

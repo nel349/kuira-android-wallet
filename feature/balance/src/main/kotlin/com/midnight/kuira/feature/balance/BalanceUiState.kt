@@ -94,7 +94,7 @@ data class TokenBalanceDisplay(
 fun TokenBalance.toDisplay(formatter: BalanceFormatter): TokenBalanceDisplay {
     return TokenBalanceDisplay(
         tokenType = tokenType,
-        balanceFormatted = formatter.format(balance, tokenType),
+        balanceFormatted = formatter.formatCompact(balance, tokenType),
         utxoCount = utxoCount,
         balanceRaw = balance
     )

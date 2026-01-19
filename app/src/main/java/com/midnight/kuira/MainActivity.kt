@@ -1,47 +1,36 @@
 package com.midnight.kuira
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.annotation.RequiresApi
+import com.midnight.kuira.feature.balance.BalanceScreen
 import com.midnight.kuira.ui.theme.KuiraTheme
+import dagger.hilt.android.AndroidEntryPoint
 
+/**
+ * Main entry point for Kuira Wallet.
+ *
+ * **Current Implementation:**
+ * Simple integration test UI for proving live balance updates work.
+ *
+ * **Test Flow:**
+ * 1. Display BalanceScreen with editable address input
+ * 2. User sends transaction via external Midnight SDK script
+ * 3. WebSocket receives update → Database → Flow → UI updates automatically
+ */
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             KuiraTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                BalanceScreen()
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    KuiraTheme {
-        Greeting("Android")
     }
 }
