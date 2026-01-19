@@ -22,3 +22,4 @@ core/testing/build/*
 core/indexer/build/*
 core/wallet/build/*
 feature/balance/build/*
+htmlReport/

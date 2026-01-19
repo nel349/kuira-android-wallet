@@ -4,8 +4,10 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.midnight.kuira.core.indexer.di.SubscriptionManagerFactory
 import com.midnight.kuira.core.indexer.model.TokenBalance
 import com.midnight.kuira.core.indexer.repository.BalanceRepository
+import com.midnight.kuira.core.indexer.sync.SyncState
 import com.midnight.kuira.core.indexer.ui.BalanceFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -56,8 +58,10 @@ import javax.inject.Inject
  * ```
  */
 @HiltViewModel
-class BalanceViewModel @Inject constructor(
+class BalanceViewModel @RequiresApi(Build.VERSION_CODES.O)
+@Inject constructor(
     private val repository: BalanceRepository,
+    private val subscriptionManagerFactory: SubscriptionManagerFactory,
     private val formatter: BalanceFormatter,
     private val clock: Clock = Clock.systemDefaultZone()  // Injected for testability
 ) : ViewModel() {
@@ -65,11 +69,16 @@ class BalanceViewModel @Inject constructor(
     private val _balanceState = MutableStateFlow<BalanceUiState>(BalanceUiState.Loading())
     val balanceState: StateFlow<BalanceUiState> = _balanceState.asStateFlow()
 
+    // Sync state (separate from balance state)
+    private val _syncState = MutableStateFlow<SyncState?>(null)
+    val syncState: StateFlow<SyncState?> = _syncState.asStateFlow()
+
     // Trigger for refreshing without creating new subscriptions
     private val refreshTrigger = MutableSharedFlow<String>(replay = 1)
 
     // Job tracking for proper cancellation
     private var collectionJob: Job? = null
+    private var syncJob: Job? = null
 
     // Track when user last triggered a load/refresh (NOT when database emitted)
     // This timestamp is set ONLY on explicit user actions (loadBalances/refresh)
@@ -101,6 +110,9 @@ class BalanceViewModel @Inject constructor(
         collectionJob?.cancel()
 
         _balanceState.value = BalanceUiState.Loading(isRefreshing = false)
+
+        // Start syncing from blockchain (updates database, which repository observes)
+        startSync(address)
 
         // Start new collection with refresh trigger
         collectionJob = viewModelScope.launch {
@@ -153,10 +165,42 @@ class BalanceViewModel @Inject constructor(
     }
 
     /**
+     * Start blockchain sync for an address.
+     *
+     * Creates a SubscriptionManager and starts subscription to sync UTXOs from indexer.
+     * The subscription updates the database, which BalanceRepository observes.
+     *
+     * Sync states are emitted to syncState flow for UI to show progress.
+     */
+    private fun startSync(address: String) {
+        // Cancel previous sync
+        syncJob?.cancel()
+
+        syncJob = viewModelScope.launch {
+            // Create subscription manager for this address
+            val subscriptionManager = subscriptionManagerFactory.create()
+
+            // Start subscription and collect sync states
+            subscriptionManager.startSubscription(address)
+                .catch { error ->
+                    // Emit error state
+                    _syncState.value = SyncState.Error(
+                        error.message ?: "Failed to sync"
+                    )
+                }
+                .collect { state ->
+                    _syncState.value = state
+                }
+        }
+        // Note: Subscription cleanup is automatic when Job is cancelled
+    }
+
+    /**
      * Refresh balances (pull-to-refresh).
      *
      * Triggers a refresh without creating a new Flow collection.
      * Sets isRefreshing = true while keeping current data visible.
+     * Also restarts blockchain sync.
      *
      * @param address The address to refresh (should match the currently loaded address)
      */
@@ -167,6 +211,9 @@ class BalanceViewModel @Inject constructor(
             if (currentState is BalanceUiState.Success) {
                 _balanceState.value = BalanceUiState.Loading(isRefreshing = true)
             }
+
+            // Restart sync
+            startSync(address)
 
             // Trigger refresh via shared flow (reuses existing collection)
             refreshTrigger.emit(address)
@@ -240,8 +287,9 @@ class BalanceViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        // Cancel collection when ViewModel is cleared
+        // Cancel jobs when ViewModel is cleared (automatic subscription cleanup)
         collectionJob?.cancel()
+        syncJob?.cancel()
     }
 
     private companion object {
