@@ -1,9 +1,9 @@
 # Kuira Wallet - Progress Tracker
 
-**Last Updated:** January 18, 2026
-**Current Phase:** Phase 4B-4 (UI Integration) - Ready to start
-**Hours Invested:** 78.5h / ~120h estimated
-**Completion:** ~65%
+**Last Updated:** January 19, 2026
+**Current Phase:** Phase 2 (Unshielded Transactions) - Planning complete
+**Hours Invested:** 85.5h / ~120h estimated
+**Completion:** ~71%
 
 ---
 
@@ -15,17 +15,17 @@
 | ↳ 1A: Unshielded Crypto | ✅ Complete | 20-25h | 30h | 100% |
 | ↳ 1B: Shielded Keys (JNI FFI) | ✅ Complete | 10-15h | 11h | 100% |
 | **Phase 4A-Full: Full Sync Engine** | ✅ **Complete** | 8-11h | 21h | 100% |
-| **Phase 4B: WebSocket + UTXO Tracking** | 🔄 **In Progress** | 25-35h | 16.5h | ~60% |
+| **Phase 4B: WebSocket + UTXO Tracking** | ✅ **Complete** | 25-35h | 23.5h | 100% |
 | ↳ 4B-1: WebSocket Client | ✅ Complete | ~8h | 8h | 100% |
 | ↳ 4B-2: UTXO Database | ✅ Complete | ~10h | 2.5h | 100% |
 | ↳ 4B-3: Balance Repository | ✅ Complete | ~3h | 6h | 100% |
-| ↳ 4B-4: UI Integration | ⏸️ Pending | ~5-8h | 0h | 0% |
+| ↳ 4B-4: UI Integration | ✅ Complete | ~5-8h | 7h | 100% |
+| **Phase 2: Unshielded Transactions** | 🔄 **In Progress** | 15-20h | 0h | 0% |
 | **Phase 3: Shielded Transactions** | ⏸️ Not Started | 20-25h | 0h | 0% |
-| **Phase 2: Unshielded Transactions** | ⏸️ Not Started | 15-20h | 0h | 0% |
 | **Phase 5: DApp Connector** | ⏸️ Not Started | 15-20h | 0h | 0% |
 | **Phase 6: UI & Polish** | ⏸️ Not Started | 15-20h | 0h | 0% |
 
-**Next Milestone:** Working balance viewer (5-8h remaining for Phase 4B - UI only)
+**Next Milestone:** Unshielded transaction sending (17-23h for Phase 2)
 
 ---
 
@@ -607,20 +607,121 @@ docs/
 
 ---
 
-## Phase 4B-4: UI Integration ⏸️ PENDING (~5-8h)
+## Phase 4B-4: UI Integration ✅ COMPLETE (7h actual / 5-8h estimated)
 
-**Goal:** Display balances to user
-**Status:** Waiting for 4B-3
+**Duration:** January 18-19, 2026
+**Goal:** Simple integration test UI to prove live balance updates work
+**Status:** ✅ Complete - Balance viewing works end-to-end
 
-### Planned Deliverables
+### Completed Deliverables
 
-- [ ] Balance screen (Compose UI)
-- [ ] Display unshielded address & balance
-- [ ] Display shielded address & balance
-- [ ] Pull-to-refresh
-- [ ] "Last updated" timestamp
-- [ ] Loading states
-- [ ] Error handling UI
+#### Balance Screen (Compose Material 3 UI)
+- ✅ `BalanceScreen.kt` - Full-featured balance display
+  - Editable address input with hardcoded default (undeployed network)
+  - Live balance display (reactive updates from WebSocket)
+  - Sync status indicator (Connecting → Syncing → Synced)
+  - Pull-to-refresh gesture
+  - "Last updated" timestamp with live formatting
+  - Token balance cards (amount, UTXO count)
+  - Copy address button
+  - Loading states and error handling
+
+#### Hilt Integration
+- ✅ `KuiraApplication.kt` - @HiltAndroidApp application class
+- ✅ `BalanceModule.kt` - Provides Clock for ViewModel
+- ✅ MainActivity updated to show BalanceScreen
+- ✅ AndroidManifest.xml configured with app class
+
+#### Bug Fixes During Implementation
+1. **Hilt Version Compatibility** (2h)
+   - Issue: Kotlin 2.1.0 incompatible with Hilt 2.51
+   - Fix: Downgraded to Kotlin 2.0.21 + KSP 2.0.21-1.0.28
+   - Referenced: WeatherApp project for working config
+
+2. **GraphQL Type Mismatch** (1h)
+   - Issue: WebSocket stuck in "Connecting..." state
+   - Root cause: Sent `transactionId.toString()` (String) instead of Int
+   - Fix: Changed to `put("transactionId", transactionId)` in IndexerClientImpl.kt:171
+
+3. **Token Display Formatting** (1h)
+   - Issue: Raw hex token IDs shown instead of symbols ("000...000" vs "NIGHT")
+   - Fix: Created TokenTypeMapper.kt to map hex → symbol
+   - Applied in BalanceRepository (domain layer)
+   - Switched to formatCompact() for cleaner display (removes trailing zeros)
+
+4. **Message Loss Bug** (2h) 🔴 CRITICAL
+   - Issue: Rapid WebSocket messages dropped (TX 28 processed, TX 29 lost)
+   - Root cause: Flow conflation when collector is busy
+   - Fix: Added `.buffer(Channel.UNLIMITED)` to subscription Flow
+   - Impact: Prevents silent transaction loss during rapid updates
+
+#### Test Flow
+**Scenario:** External Midnight SDK script sends transaction
+1. WebSocket receives update (TX 28, TX 29 arrive 4ms apart)
+2. Both transactions processed (no message loss with buffering)
+3. Database persists UTXOs
+4. BalanceViewModel emits updated state
+5. UI updates automatically (2 NIGHT displayed)
+6. Pull-to-refresh works (manually verified)
+
+#### Files Created/Modified
+
+**Created:**
+```
+app/src/main/java/com/midnight/kuira/KuiraApplication.kt
+feature/balance/src/main/kotlin/.../BalanceScreen.kt (468 lines)
+feature/balance/src/main/kotlin/.../di/BalanceModule.kt
+core/indexer/src/main/kotlin/.../model/TokenTypeMapper.kt
+```
+
+**Modified:**
+```
+gradle/libs.versions.toml                    # Downgraded Kotlin, KSP
+app/build.gradle.kts                         # Added Hilt + Compose deps
+feature/balance/build.gradle.kts             # Added Compose plugin
+app/src/main/java/com/midnight/kuira/MainActivity.kt  # Show BalanceScreen
+app/src/main/AndroidManifest.xml             # App class + INTERNET permission
+core/indexer/.../api/IndexerClientImpl.kt    # Fixed GraphQL type + buffering
+core/indexer/.../repository/BalanceRepository.kt  # Token mapper
+feature/balance/.../BalanceUiState.kt        # formatCompact()
+```
+
+### Key Achievements
+
+1. **End-to-End Integration** ✅
+   - WebSocket → Database → ViewModel → UI
+   - Live updates proven with real transactions
+   - Pull-to-refresh working
+
+2. **Critical Bug Fixed** ✅
+   - Message loss prevented with Flow buffering
+   - Transaction ordering preserved
+   - No silent data loss
+
+3. **Production-Ready UI** ✅
+   - Material 3 design
+   - Sync status indicators
+   - Error handling
+   - Loading states
+
+4. **Cross-App Testing** ✅
+   - npm script shows 2 NIGHT
+   - Android app shows 2 NIGHT
+   - Balances match exactly
+
+### Lessons Learned
+
+**Lesson 1: Version Compatibility**
+> Kotlin 2.1.0 too new for current Hilt. Always check reference projects for working configs.
+
+**Lesson 2: GraphQL Type Safety**
+> TypeScript allows loose types, Kotlin requires exact match. Test with real server early.
+
+**Lesson 3: Flow Conflation**
+> Default Flow behavior drops rapid emissions. Financial apps MUST use .buffer() to prevent data loss.
+
+**Lesson 4: Domain Layer Formatting**
+> Transform data early (hex → symbol in repository, not UI). Keeps UI simple.
 
 ---
 
@@ -850,12 +951,89 @@ Source: Midnight SDK `@midnight-ntwrk/ledger-v6` v6.1.0-alpha.6
 
 ---
 
-## Phase 2: Unshielded Transactions ⏸️ NOT STARTED
+## Phase 2: Unshielded Transactions 🔄 IN PROGRESS
 
-**Estimate:** 15-20h
-**Goal:** Send/receive transparent tokens
+**Duration:** Started January 19, 2026
+**Goal:** Send transparent (non-private) tokens from Kuira wallet
+**Status:** 🔄 Planning complete, ready to implement
+**Hours:** 0h invested / 15-20h estimated
 
-**Waiting for:** Phase 1 completion
+### Implementation Plan
+
+See **`docs/PHASE_2_PLAN.md`** for complete breakdown.
+
+**Phase 2 Sub-Phases:**
+- **2A:** Transaction Models (Intent, Segment, UnshieldedOffer) - 2-3h
+- **2B:** UTXO Manager (coin selection, available/pending pools) - 3-4h
+- **2C:** Transaction Builder (construct balanced transactions) - 4-5h
+- **2D:** Signing & Binding (Schnorr signatures) - 2-3h
+- **2E:** Submission Layer (SCALE codec + RPC client) - 3-4h
+- **2F:** Send UI (Compose screen) - 3-4h
+
+**Total Estimate:** 17-23 hours
+
+### Key Architecture Concepts
+
+**Intent-Based Transactions:**
+- Midnight uses "Intents" (not simple transactions)
+- Intent = collection of segments with inputs/outputs
+- Segment 0 = guaranteed execution
+- TTL (time-to-live) = 30 minutes
+
+**UTXO Management:**
+- Available pool (confirmed, spendable)
+- Pending pool (in-flight transactions)
+- Coin selection: largest-first strategy
+- Change automatically returned to sender
+
+**Signing Flow:**
+- Schnorr BIP-340 (already have from Phase 1)
+- One signature per input
+- Binding signature (makes intent immutable)
+
+**Submission:**
+- SCALE codec serialization (Substrate format)
+- RPC: `midnight.sendMnTransaction(hex)`
+- Track status: Submitted → InBlock → Finalized
+
+### Open Questions (Need User Input)
+
+**Q1: SCALE Codec Library**
+- Write minimal custom implementation? (Recommended)
+- Use existing Kotlin library? (if available)
+
+**Q2: Fee Handling**
+- Unshielded txs have no direct fees (paid via Dust)
+- Skip fees for Phase 2? (Recommended)
+
+**Q3: Multi-Recipient**
+- One recipient only? (Recommended for simplicity)
+
+**Q4: Transaction History**
+- Skip for Phase 2, add in Phase 6? (Recommended)
+
+### Dependencies
+
+**Prerequisites (Complete):**
+- ✅ Phase 1: Unshielded keys + Schnorr signing
+- ✅ Phase 4B: Balance viewing + UTXO tracking
+
+**External:**
+- Midnight node running locally (for testing)
+- RPC endpoint: `ws://localhost:9944`
+
+### Current Status
+
+**Completed:**
+- ✅ Research Midnight transaction architecture
+- ✅ Document key concepts (Intent, Segment, UTXO)
+- ✅ Create implementation plan (PHASE_2_PLAN.md)
+- ✅ Define 6 sub-phases with estimates
+
+**Next Steps:**
+1. Review plan with user
+2. Answer open questions (Q1-Q4)
+3. Start Phase 2A (Transaction Models)
 
 ---
 

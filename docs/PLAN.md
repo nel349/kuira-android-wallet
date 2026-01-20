@@ -2,7 +2,7 @@
 
 **Project:** Midnight Wallet for Android
 **Estimate:** 85-125 hours across 7 phases
-**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B-3 ✅ Complete | Phase 4B-4 ⏸️ Next
+**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B ✅ Complete | **Phase 2 (Unshielded TX) 🔄 In Progress**
 
 See **PROGRESS.md** for current status and hours invested.
 
@@ -16,16 +16,16 @@ See **PROGRESS.md** for current status and hours invested.
 **Current Structure:**
 1. ✅ **Phase 1 Complete**: Crypto/keys working (41h)
 2. ✅ **Phase 4A-Full Complete**: GraphQL HTTP client + sync engine (21h)
-3. 🔄 **Phase 4B In Progress**: WebSocket subscriptions + UTXO tracking (8h invested)
-4. ⏭️ **Phase 4B-UI Next**: Balance display (5-8h)
-5. ⏭️ **Phase 3**: Shielded transactions (20-25h)
-6. ⏭️ **Phase 2**: Unshielded transactions (15-20h)
+3. ✅ **Phase 4B Complete**: WebSocket subscriptions + UTXO tracking (23.5h)
+4. ✅ **Phase 4B-UI Complete**: Balance display (7h)
+5. 🔄 **Phase 2 In Progress**: Unshielded transactions (15-20h)
+6. ⏭️ **Phase 3 Next**: Shielded transactions (20-25h)
 
 **Why This Order?**
 1. **Phase 1 first**: Must have keys before anything else ✅
-2. **Phase 4 before transactions**: Need balance viewing to test transactions
-3. **Phase 3 before Phase 2**: Shielded transactions are core Midnight feature (privacy-first)
-4. **No "lite" option**: Midnight architecture requires WebSocket + local UTXO tracking
+2. **Phase 4 before transactions**: Need balance viewing to test transactions ✅
+3. **Phase 2 before Phase 3**: Simpler transactions first (no ZK proofs), build confidence
+4. **No "lite" option**: Midnight architecture requires WebSocket + local UTXO tracking ✅
 
 ---
 
@@ -35,17 +35,17 @@ See **PROGRESS.md** for current status and hours invested.
 |-------|------|----------|--------|--------|
 | **Phase 1: Crypto Foundation** | Key derivation & addresses | 30-35h | 41h | ✅ Complete |
 | **Phase 4A-Full: Full Sync Engine** | Event cache, reorg, balance calc | 8-11h | 21h | ✅ Complete |
-| **Phase 4B: WebSocket + UTXO Tracking** | Subscriptions, local UTXO database | 25-35h | 16.5h | 🔄 In Progress |
+| **Phase 4B: WebSocket + UTXO Tracking** | Subscriptions, local UTXO database | 25-35h | 23.5h | ✅ Complete |
 | ↳ 4B-1: WebSocket Client | GraphQL-WS protocol | ~8h | 8h | ✅ Complete |
 | ↳ 4B-2: UTXO Database | Room database + subscriptions | ~10h | 2.5h | ✅ Complete |
 | ↳ 4B-3: Balance Repository | Repository layer + ViewModels | ~3h | 6h | ✅ Complete |
-| ↳ 4B-4: UI Integration | Display balances (Compose) | ~5-8h | 0h | ⏸️ Pending |
+| ↳ 4B-4: UI Integration | Display balances (Compose) | ~5-8h | 7h | ✅ Complete |
+| **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 15-20h | 0h | 🔄 In Progress |
 | **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | 0h | ⏸️ Not Started |
-| **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 15-20h | 0h | ⏸️ Not Started |
 | **Phase 5: DApp Connector** | Contract interaction | 15-20h | 0h | ⏸️ Not Started |
 | **Phase 6: UI & Polish** | Production-ready app | 15-20h | 0h | ⏸️ Not Started |
 
-**Progress:** 78.5h / ~120h estimated (65% complete)
+**Progress:** 85.5h / ~120h estimated (71% complete)
 
 ---
 
@@ -494,13 +494,15 @@ core/network/
 ## Phase 2: Unshielded Transactions (15-20h)
 
 **Goal:** Send/receive transparent tokens (no privacy)
-**Status:** ⏸️ After Phase 3
+**Status:** 🔄 In Progress - Planning complete
 
-**Why After Phase 3?**
-- Simpler than shielded transactions
-- Not core Midnight feature (users want privacy)
-- Phase 3 already implements transaction infrastructure we can reuse
-- Can test with light wallet balance queries
+**See:** **`docs/PHASE_2_PLAN.md`** for detailed implementation breakdown
+
+**Why Before Phase 3?** (Changed from original plan)
+- Simpler than shielded transactions (no ZK proofs)
+- Can test immediately with Phase 4B balance viewing
+- Build confidence before tackling complex shielded txs
+- Phase 1 crypto already provides everything we need
 
 **Architecture:**
 - Substrate RPC client (reuse from Phase 3)
