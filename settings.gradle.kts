@@ -23,6 +23,7 @@ rootProject.name = "Kuira"
 include(":app")
 include(":core:crypto")
 include(":core:indexer")
+include(":core:ledger")
 include(":core:wallet")
 include(":core:testing")
 include(":feature:balance")

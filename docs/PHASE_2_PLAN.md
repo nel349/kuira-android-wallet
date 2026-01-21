@@ -30,11 +30,19 @@
 
 | Document | Purpose | Key Findings |
 |----------|---------|--------------|
+| `MIDNIGHT_LIBRARIES_MAPPING.md` | ✅ **Source verification** | **100% based on official Midnight libraries** |
 | `PHASE_2_INVESTIGATION.md` | First investigation (2h) | Found 3 critical errors in original plan |
 | `PHASE_2_GAPS_AND_BLOCKERS.md` | Phase-by-phase validation | 14 gaps + 5 blockers identified |
 | `TEST_VECTORS_PHASE2.md` | Validation data | 70% complete, extracted from tests + scripts |
 | `BLOCKERS_RESOLUTION.md` | Blockers #1, #2, #4 | Test vectors, ledger version, Bech32m decoder |
 | `BLOCKER_3_5_RESOLUTION.md` | Blockers #3, #5 | RPC format, atomic DB operations |
+
+**Midnight Libraries Foundation:**
+- ✅ `midnight-wallet` (TypeScript SDK) - Transaction flow, coin selection
+- ✅ `midnight-ledger` (Rust) v6.1.0-alpha.5 - Serialization, signing
+- ✅ `midnight-indexer` (GraphQL) - UTXO tracking, subscriptions
+- ✅ `midnight-node` (Substrate) - RPC submission
+- 📖 See `MIDNIGHT_LIBRARIES_MAPPING.md` for complete source references
 
 **Critical Corrections Made:**
 1. ❌ **Original:** Largest-first coin selection → ✅ **Corrected:** Smallest-first (privacy optimization)
@@ -42,6 +50,29 @@
 3. ❌ **Missing:** Atomic DB operations → ✅ **Added:** Room @Transaction design
 
 **Confidence:** 95% (up from 85% after blocker resolution)
+
+---
+
+## ✅ Foundation: 100% Based on Midnight Libraries
+
+**ALL implementation decisions verified against official Midnight source code:**
+
+```
+/Users/norman/Development/midnight/midnight-libraries/
+├── midnight-wallet/       ✅ Transaction flow, coin selection (TypeScript)
+├── midnight-ledger/       ✅ Serialization, signing (Rust v6.1.0-alpha.5)
+├── midnight-indexer/      ✅ UTXO tracking, GraphQL subscriptions
+└── midnight-node/         ✅ RPC submission (Substrate)
+```
+
+**Key Verifications:**
+- ✅ Coin selection: Smallest-first (verified in `Balancer.ts:143`)
+- ✅ Serialization: JNI to midnight-ledger (same as SDK's WASM approach)
+- ✅ Transaction structure: Intent/Segment/UnshieldedOffer (from `structure.rs`)
+- ✅ Address format: Bech32m compatible with Lace wallet
+- ✅ Ledger version: v6.1.0-alpha.5 (exact match)
+
+📖 **Complete source mapping:** See `MIDNIGHT_LIBRARIES_MAPPING.md`
 
 ---
 

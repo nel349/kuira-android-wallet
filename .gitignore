@@ -21,5 +21,6 @@ core/testing/build/*
 # Ignore build directories of specific modules
 core/indexer/build/*
 core/wallet/build/*
+core/ledger/build/*
 feature/balance/build/*
 htmlReport/
