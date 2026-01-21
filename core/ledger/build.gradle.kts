@@ -39,9 +39,13 @@ dependencies {
     // Coroutines (for suspend functions in future phases)
     implementation(libs.kotlinx.coroutines.android)
 
+    // Indexer module (for UTXO management and selection)
+    implementation(project(":core:indexer"))
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("io.mockk:mockk:1.13.8")  // MockK for Kotlin
     testImplementation(project(":core:testing"))
 
     // Android Instrumentation Testing
