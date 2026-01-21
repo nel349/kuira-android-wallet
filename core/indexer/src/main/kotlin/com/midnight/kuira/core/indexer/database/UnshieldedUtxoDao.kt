@@ -149,4 +149,31 @@ interface UnshieldedUtxoDao {
      */
     @Query("SELECT COUNT(*) FROM unshielded_utxos WHERE owner = :address AND state = 'AVAILABLE'")
     suspend fun countUnspent(address: String): Int
+
+    // ========== Phase 2B: Coin Selection Methods ==========
+
+    /**
+     * Get available UTXOs for a specific token, sorted by value (smallest first).
+     *
+     * Used for smallest-first coin selection algorithm.
+     * Returns only AVAILABLE UTXOs, excludes PENDING and SPENT.
+     *
+     * **Sorting:** Ascending by value (smallest first) for privacy optimization.
+     * Source: midnight-wallet Balancer.ts:143 (chooseCoin function)
+     *
+     * @param address Owner address
+     * @param tokenType Token type identifier
+     * @return List of available UTXOs sorted by value (smallest first)
+     */
+    @Query("""
+        SELECT * FROM unshielded_utxos
+        WHERE owner = :address
+        AND token_type = :tokenType
+        AND state = 'AVAILABLE'
+        ORDER BY CAST(value AS INTEGER) ASC
+    """)
+    suspend fun getUnspentUtxosForTokenSorted(
+        address: String,
+        tokenType: String
+    ): List<UnshieldedUtxoEntity>
 }

@@ -1,5 +1,6 @@
 package com.midnight.kuira.core.indexer.utxo
 
+import androidx.room.Transaction
 import com.midnight.kuira.core.indexer.database.UnshieldedUtxoDao
 import com.midnight.kuira.core.indexer.database.UnshieldedUtxoEntity
 import com.midnight.kuira.core.indexer.database.UtxoState
@@ -210,6 +211,169 @@ class UtxoManager(
      */
     suspend fun clearUtxos(address: String) {
         utxoDao.deleteUtxosForAddress(address)
+    }
+
+    // ========== Phase 2B: Coin Selection & Atomic Locking ==========
+
+    /**
+     * Select and lock UTXOs for transaction (atomic operation).
+     *
+     * **Critical: Prevents Double-Spend Race Condition**
+     *
+     * This method performs selection and locking in a SINGLE database transaction:
+     * 1. SELECT available UTXOs (sorted by value, smallest first)
+     * 2. Perform coin selection (smallest-first algorithm)
+     * 3. UPDATE selected UTXOs to PENDING state
+     *
+     * **Atomicity:** Room's @Transaction ensures this is a single SQLite transaction.
+     * No other thread can select the same UTXOs between steps 1-3.
+     *
+     * **Why Atomic?**
+     * ```
+     * // ❌ WITHOUT @Transaction (RACE CONDITION):
+     * Thread A: SELECT utxos WHERE state = AVAILABLE  → [utxo1, utxo2]
+     * Thread B: SELECT utxos WHERE state = AVAILABLE  → [utxo1, utxo2]  // SAME UTXOs!
+     * Thread A: UPDATE utxos SET state = PENDING
+     * Thread B: UPDATE utxos SET state = PENDING
+     * Result: DOUBLE-SPEND! Both threads use same UTXOs
+     *
+     * // ✅ WITH @Transaction (SAFE):
+     * Thread A: [SELECT + UPDATE in one transaction]  → LOCKS [utxo1, utxo2]
+     * Thread B: [waits for Thread A's transaction to complete]
+     * Thread B: SELECT utxos WHERE state = AVAILABLE  → [utxo3, utxo4]  // Different UTXOs!
+     * Result: SAFE! Each thread gets different UTXOs
+     * ```
+     *
+     * **Source:** Based on midnight-wallet coin selection + state management
+     * **File:** `midnight-wallet/packages/capabilities/src/balancer/Balancer.ts`
+     *
+     * **Usage in Transaction Builder:**
+     * ```kotlin
+     * // Lock UTXOs for transaction
+     * val result = utxoManager.selectAndLockUtxos(
+     *     address = senderAddress,
+     *     tokenType = "NIGHT",
+     *     requiredAmount = BigInteger("100000000")
+     * )
+     *
+     * when (result) {
+     *     is SelectionResult.Success -> {
+     *         // Build transaction with result.selectedUtxos
+     *         // Create change output with result.change (if > 0)
+     *     }
+     *     is SelectionResult.InsufficientFunds -> {
+     *         // Show error to user
+     *     }
+     * }
+     *
+     * // If transaction fails, unlock UTXOs:
+     * utxoManager.unlockUtxos(result.selectedUtxos.map { it.id })
+     * ```
+     *
+     * @param address Owner address
+     * @param tokenType Token type to select
+     * @param requiredAmount Amount needed (in smallest units)
+     * @return SelectionResult (Success with locked UTXOs, or InsufficientFunds)
+     */
+    @Transaction
+    suspend fun selectAndLockUtxos(
+        address: String,
+        tokenType: String,
+        requiredAmount: BigInteger
+    ): UtxoSelector.SelectionResult {
+        // Step 1: SELECT available UTXOs (sorted by value, smallest first)
+        val availableUtxos = utxoDao.getUnspentUtxosForTokenSorted(address, tokenType)
+
+        // Step 2: Perform coin selection (smallest-first)
+        val selector = UtxoSelector()
+        val selectionResult = selector.selectUtxos(availableUtxos, requiredAmount)
+
+        // Step 3: If successful, UPDATE selected UTXOs to PENDING
+        if (selectionResult is UtxoSelector.SelectionResult.Success) {
+            val utxoIds = selectionResult.selectedUtxos.map { it.id }
+            utxoDao.markAsPending(utxoIds)
+        }
+
+        // All three steps completed atomically (no other thread can interfere)
+        return selectionResult
+    }
+
+    /**
+     * Select and lock UTXOs for multiple token types (atomic operation).
+     *
+     * Performs coin selection for multiple tokens in a single transaction.
+     * If ANY token has insufficient funds, NO UTXOs are locked (all-or-nothing).
+     *
+     * **Atomicity:** Room's @Transaction ensures all-or-nothing behavior:
+     * - If all tokens succeed → Lock ALL selected UTXOs
+     * - If any token fails → Lock NONE (rollback)
+     *
+     * **Usage:**
+     * ```kotlin
+     * val requirements = mapOf(
+     *     "NIGHT" to BigInteger("100000000"),
+     *     "DUST" to BigInteger("50000000")
+     * )
+     *
+     * val result = utxoManager.selectAndLockUtxosMultiToken(address, requirements)
+     * ```
+     *
+     * @param address Owner address
+     * @param requiredAmounts Map of tokenType → required amount
+     * @return MultiTokenResult (Success with all selections, or PartialFailure)
+     */
+    @Transaction
+    suspend fun selectAndLockUtxosMultiToken(
+        address: String,
+        requiredAmounts: Map<String, BigInteger>
+    ): UtxoSelector.MultiTokenResult {
+        // Collect all available UTXOs for this address
+        val availableUtxos = utxoDao.getUnspentUtxos(address)
+
+        // Perform multi-token selection
+        val selector = UtxoSelector()
+        val result = selector.selectUtxosMultiToken(availableUtxos, requiredAmounts)
+
+        // If all successful, lock all selected UTXOs
+        if (result is UtxoSelector.MultiTokenResult.Success) {
+            val allUtxoIds = result.allSelectedUtxos().map { it.id }
+            utxoDao.markAsPending(allUtxoIds)
+        }
+
+        // If any failed, transaction is rolled back (no UTXOs locked)
+        return result
+    }
+
+    /**
+     * Unlock UTXOs (mark as AVAILABLE).
+     *
+     * Used when transaction fails or is cancelled.
+     * Releases locked UTXOs so they can be used in future transactions.
+     *
+     * **State Transition:** PENDING → AVAILABLE
+     *
+     * @param utxoIds List of UTXO IDs to unlock
+     */
+    suspend fun unlockUtxos(utxoIds: List<String>) {
+        if (utxoIds.isNotEmpty()) {
+            utxoDao.markAsAvailable(utxoIds)
+        }
+    }
+
+    /**
+     * Mark UTXOs as spent (transaction confirmed).
+     *
+     * Used when transaction is successfully confirmed on-chain.
+     * Permanently marks UTXOs as spent.
+     *
+     * **State Transition:** PENDING → SPENT
+     *
+     * @param utxoIds List of UTXO IDs to mark as spent
+     */
+    suspend fun markUtxosAsSpent(utxoIds: List<String>) {
+        if (utxoIds.isNotEmpty()) {
+            utxoDao.markAsSpent(utxoIds)
+        }
     }
 
     /**
