@@ -491,10 +491,10 @@ core/network/
 
 ---
 
-## Phase 2: Unshielded Transactions (15-20h)
+## Phase 2: Unshielded Transactions (22-30h)
 
 **Goal:** Send/receive transparent tokens (no privacy)
-**Status:** 🔄 In Progress - Planning complete
+**Status:** 🔄 In Progress - Phase 2A/2B/2C complete (11h/22-30h, 43%)
 
 **See:** **`docs/PHASE_2_PLAN.md`** for detailed implementation breakdown
 
@@ -502,33 +502,50 @@ core/network/
 - Simpler than shielded transactions (no ZK proofs)
 - Can test immediately with Phase 4B balance viewing
 - Build confidence before tackling complex shielded txs
-- Phase 1 crypto already provides everything we need
 
 **Architecture:**
-- Substrate RPC client (reuse from Phase 3)
+- Intent-based transactions (Midnight's unique transaction model)
 - UTXO state machine (Available → Pending → Spent)
-- Intent-based transactions (Segment 0 = guaranteed)
-- Schnorr signing (BIP-340 over secp256k1) from Phase 1
+- Smallest-first coin selection (privacy optimization)
+- Schnorr signing via midnight-ledger JNI (NOT pure Kotlin)
+- SCALE codec via midnight-ledger FFI (same as TypeScript SDK)
+
+**Completed Sub-Phases:** ✅ Phase 2A, 2B, 2C (11h)
+- ✅ 2A: Transaction models (Intent, UnshieldedOffer, UtxoSpend) - 52 tests
+- ✅ 2B: UTXO Manager with coin selection (smallest-first) - 25 tests
+- ✅ 2C: Transaction Builder - 11 tests
 
 **Deliverables:**
-- [ ] Unshielded UTXO tracking
-- [ ] SCALE codec for transaction serialization
-- [ ] UTXO selection (largest-first strategy)
-- [ ] Multi-segment signing & binding
-- [ ] Transaction submission & tracking
-- [ ] Balance queries (reuse Phase 4B)
+- [x] Transaction models (Intent, UnshieldedOffer, UtxoSpend, UtxoOutput)
+- [x] UTXO selection (smallest-first strategy for privacy)
+- [x] Transaction builder (balancing, TTL, change calculation)
+- [ ] JNI wrapper to midnight-ledger (signing + serialization via FFI)
+- [ ] Transaction submission via RPC
+- [ ] Send UI screen
 
 **Dependencies:**
-- ✅ Phase 1 (unshielded keys)
-- ⏳ Phase 3 (transaction infrastructure to reuse)
-- ✅ Phase 4A-Lite (balance viewing for testing)
+- ✅ Phase 1 (BIP-32 key derivation for private keys)
+- ✅ Phase 4B (UTXO tracking, balance viewing)
+- ✅ midnight-ledger v6.1.0-alpha.5 (Rust library, already used for shielded keys)
+
+**Critical:** Schnorr BIP-340 signing is handled by midnight-ledger via JNI (same pattern as Phase 1B shielded keys). There is NO pure Kotlin Schnorr implementation.
 
 **Files:**
 ```
 core/ledger/
-├── UnshieldedTransactionBuilder.kt # Intent-based tx
-├── UnshieldedUtxoManager.kt        # State tracking
-└── UnshieldedSigner.kt             # Schnorr BIP-340 (reuse Phase 1)
+├── model/
+│   ├── Intent.kt                      # ✅ Complete
+│   ├── UnshieldedOffer.kt             # ✅ Complete
+│   ├── UtxoSpend.kt                   # ✅ Complete
+│   └── UtxoOutput.kt                  # ✅ Complete
+├── builder/
+│   └── UnshieldedTransactionBuilder.kt # ✅ Complete
+└── signer/
+    └── TransactionSigner.kt           # ⏸️ Next (via FFI)
+
+rust/kuira-ledger-ffi/                 # ⏸️ Next (JNI wrapper)
+├── src/lib.rs                         # Signing + serialization
+└── jni/kuira_ledger_jni.c             # JNI bridge
 ```
 
 ---

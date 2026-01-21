@@ -78,7 +78,8 @@
 
 ## Prerequisites (Already Complete ✅)
 
-- ✅ Phase 1: Unshielded key derivation (BIP-39/32, Schnorr signing)
+- ✅ Phase 1: Unshielded key derivation (BIP-39/32 for private keys)
+  - **Note:** Phase 1 did NOT implement Schnorr signing - that will be done in Phase 2D-FFI via midnight-ledger
 - ✅ Phase 4B: Balance viewing (UTXO tracking, WebSocket subscriptions)
 - ✅ Research: Midnight's intent-based transaction architecture
 - ✅ **Investigation: All 5 implementation blockers resolved**
@@ -111,13 +112,14 @@ User wants to send 100 NIGHT to recipient
 | 2A: Transaction Models | Data classes for Intent/Offer/UTXO | 2-3h | 3h | ✅ Complete |
 | 2B: UTXO Manager | Coin selection + state tracking | 2-3h | 3.5h | ✅ Complete |
 | 2C: Transaction Builder | Construct & balance transactions | 3-4h | 1.5h | ✅ Complete |
-| 2D: Signing & Binding | Schnorr signing for segments | 2-3h | - | ⏸️ Next |
-| **2D-FFI: JNI Ledger Wrapper** | **Serialize transactions via Rust** | **8-10h** | - | **⏸️ Pending** |
+| **2D-FFI: JNI Ledger Wrapper** | **Signing + binding + serialization via Rust** | **8-10h** | - | **⏸️ Next** |
 | 2E: Submission Layer | WebSocket RPC client | 2-3h | - | ⏸️ Pending |
 | 2F: Send UI | Compose screen for sending | 3-4h | - | ⏸️ Pending |
 
-**Total:** 22-30 hours (was 17-23h, +8-10h for JNI wrapper)
-**Progress:** 11h / 22-30h (43% complete, 2.5h under estimate so far)
+**Total:** 20-26 hours (revised: removed standalone Phase 2D, merged into 2D-FFI)
+**Progress:** 8h / 20-26h (38% complete, 2.5h under estimate so far)
+
+**NOTE:** Phase 2D (standalone Schnorr signing) removed from plan. Schnorr BIP-340 is **NOT** implemented in Phase 1 - it will be handled by midnight-ledger via FFI in Phase 2D-FFI.
 
 ---
 
@@ -330,48 +332,22 @@ docs/
 
 ---
 
-## Phase 2D: Signing & Binding (2-3h)
-
-**Goal:** Sign transaction inputs with Schnorr signatures
-
-**Key Concepts:**
-- **Schnorr BIP-340:** Signature algorithm (already implemented in Phase 1)
-- **Per-Input Signing:** One signature for each UtxoSpend
-- **Binding Signature:** Final step that makes transaction immutable
-- **Signature Data:** Hash of transaction fields to sign
-
-**Deliverables:**
-- [ ] `TransactionSigner.kt`
-  - `signOffer(offer, signingKey)` → signed offer
-  - Get signature data from each input
-  - Sign with Schnorr (reuse Phase 1 crypto)
-  - Add signatures to offer
-- [ ] `TransactionBinder.kt`
-  - `bind(transaction)` → bound transaction
-  - Create binding signature (Fiat-Shamir transform)
-  - Mark transaction as immutable
-- [ ] Unit tests for signing
-  - Single input signature
-  - Multi-input signatures
-  - Signature verification
-
-**Module:** `core/ledger`
-
-**Dependencies:**
-- Phase 1: `HDWallet`, Schnorr signing
-- Phase 2C: Transaction builder
-
----
-
 ## Phase 2D-FFI: JNI Ledger Wrapper (8-10h) 🆕 CRITICAL ✅ Infrastructure Ready
 
-**Goal:** Create JNI bindings to Rust `midnight-ledger` for transaction serialization
+**Goal:** Create JNI bindings to Rust `midnight-ledger` for signing, binding, and serialization
 
 **Why This is Needed:**
+- **CRITICAL:** No pure-Kotlin Schnorr BIP-340 implementation exists (Phase 1 did NOT implement this)
 - **CRITICAL:** No pure-Kotlin SCALE codec exists
-- **CRITICAL:** Custom SCALE implementation will have mismatches
-- **SOLUTION:** Use the same Rust ledger that TypeScript SDK uses
-- **Evidence:** `tx.serialize()` in SDK returns pre-encoded bytes from Rust WASM
+- **CRITICAL:** Custom implementations will have compatibility mismatches
+- **SOLUTION:** Use the same Rust ledger that TypeScript SDK uses via WASM
+- **PATTERN:** Same approach as Phase 1B shielded keys (JNI → C → Rust)
+
+**What Phase 1 Actually Provided:**
+- ✅ BIP-32 HD key derivation (produces raw private keys as bytes)
+- ✅ Bech32m address encoding
+- ✅ Shielded key derivation via JNI
+- ❌ **NOT Schnorr signing** (this will be done here via midnight-ledger)
 
 **✅ BLOCKER #2 RESOLVED:** Ledger version and infrastructure verified
 - **Version:** midnight-ledger v6.1.0-alpha.5 confirmed (exact match!)
@@ -382,22 +358,46 @@ docs/
 - **Reuse:** Can copy Phase 1B build infrastructure (CMakeLists.txt, build-android.sh)
 
 **Deliverables:**
+
+**Rust FFI Layer:**
 - [ ] `transaction_ffi.rs` - Rust FFI functions
-  - `create_transaction(networkId, ttl, inputs, outputs)` → Transaction pointer
-  - `get_signature_data(tx_ptr, segment_id, input_index)` → Bytes to sign
-  - `add_signature(tx_ptr, input_index, signature)` → Updated transaction
-  - `bind_transaction(tx_ptr)` → Bound transaction pointer
-  - `serialize_transaction(tx_ptr)` → Uint8Array (SCALE-encoded)
-  - `free_transaction(tx_ptr)` - Memory cleanup
+  - `create_intent(networkId, ttl, inputs, outputs)` → Intent pointer
+  - `get_signature_data(intent_ptr, segment_id)` → Bytes to sign for segment
+  - `create_signing_key(private_key_bytes)` → SigningKey pointer
+  - `sign_with_key(signing_key_ptr, data)` → Signature bytes (Schnorr BIP-340)
+  - `add_signatures(intent_ptr, signatures)` → Signed intent pointer
+  - `bind_intent(intent_ptr)` → Bound intent pointer (immutable)
+  - `serialize_intent(intent_ptr)` → Uint8Array (SCALE-encoded)
+  - `free_intent(intent_ptr)` - Memory cleanup
+  - `free_signing_key(key_ptr)` - Memory cleanup
+
+**JNI C Bridge:**
 - [ ] `transaction_jni.c` - JNI C bridge
   - Convert Java byte arrays ↔ Rust pointers
-  - Handle memory management (same pattern as Phase 1B)
-- [ ] `TransactionSerializer.kt` - Kotlin wrapper
-  - Call JNI functions
-  - Handle exceptions
+  - Handle memory management (same pattern as Phase 1B shielded keys)
+  - Error handling and null checks
+
+**Kotlin Wrapper:**
+- [ ] `TransactionSigner.kt` - Kotlin wrapper for signing
+  - `signIntent(intent, privateKey): SignedIntent` - Signs all inputs
+  - `bindIntent(signedIntent): BoundIntent` - Final binding signature
+  - Calls JNI functions
+  - Handle exceptions with user-friendly errors
+- [ ] `TransactionSerializer.kt` - Kotlin wrapper for serialization
+  - `serialize(boundIntent): ByteArray` - SCALE encoding
+  - Validates transaction before serialization
+  - Calls JNI functions
+
+**Build Infrastructure:**
 - [ ] Copy Phase 1B build scripts (CMakeLists.txt, build-android.sh)
+- [ ] Update Cargo.toml to include midnight-ledger (already available)
 - [ ] Cross-compile for Android (4 architectures: arm64-v8a, armeabi-v7a, x86, x86_64)
+
+**Testing:**
+- [ ] Unit tests for TransactionSigner (mock FFI)
 - [ ] Integration tests with test vectors from `TEST_VECTORS_PHASE2.md`
+- [ ] Test signing with known private key → verify signature
+- [ ] Test serialization → deserialize in Rust → verify roundtrip
 
 **Module:** Extend `rust/kuira-crypto-ffi` or create `rust/kuira-ledger-ffi`
 
@@ -558,18 +558,17 @@ fun validateAddress(address: String, expectedNetwork: String): Result<ByteArray>
 
 ## Implementation Order
 
-### Week 1: Core Logic + FFI (13-16h)
-1. **Day 1-2:** Phase 2A (Models) + 2B (UTXO Manager - fix coin selection!)
-2. **Day 3:** Phase 2C (Transaction Builder)
-3. **Day 4:** Phase 2D (Signing & Binding)
-4. **Day 5-6:** Phase 2D-FFI (JNI Ledger Wrapper)
+### Week 1: Core Logic + FFI (15-17h)
+1. ✅ **Day 1-2:** Phase 2A (Models) + 2B (UTXO Manager) - COMPLETE (6.5h)
+2. ✅ **Day 3:** Phase 2C (Transaction Builder) - COMPLETE (1.5h)
+3. ⏸️ **Day 4-6:** Phase 2D-FFI (JNI Ledger Wrapper: Signing + Binding + Serialization) - NEXT (8-10h)
 
 **Milestone:** Can construct, sign, and serialize transactions
 
-### Week 2: Submission & UI (9-14h)
-1. **Day 7:** Phase 2E (RPC Client)
-2. **Day 8:** Phase 2F (Send UI)
-3. **Day 9-10:** Integration testing + bug fixes
+### Week 2: Submission & UI (7-10h)
+1. **Day 7:** Phase 2E (RPC Client) - 2-3h
+2. **Day 8:** Phase 2F (Send UI) - 3-4h
+3. **Day 9-10:** Integration testing + bug fixes - 2-3h
 
 **Milestone:** End-to-end send transaction working
 
@@ -832,13 +831,15 @@ Pending → Available (on failure)
 
 ## Final Summary
 
-**Total Estimate:** 22-30 hours (revised after investigation, was 15-20h)
-**Confidence:** 95% (up from 85% after blocker resolution)
-**Risk Level:** 🟢 LOW (down from MEDIUM after comprehensive validation)
+**Total Estimate:** 20-26 hours (revised: merged Phase 2D into 2D-FFI)
+**Progress:** 8h / 20-26h (38% complete)
+**Confidence:** 95% (after blocker resolution and 2A/2B/2C completion)
+**Risk Level:** 🟢 LOW (after comprehensive validation)
 
-**Status:** 🟢 **READY TO IMPLEMENT** - All prerequisites met, all blockers resolved!
+**Status:** 🟢 **PHASE 2D-FFI NEXT** - Transaction models complete, UTXO manager complete, builder complete
 
 **Investigation Investment:** 3 hours spent resolving blockers upfront
 **Benefit:** Saved 10-15h of debugging + prevented 3 critical errors
 
-**Next Phase:** Phase 2A (Transaction Models)
+**Completed:** Phase 2A + 2B + 2C (8h actual, 88 tests passing)
+**Next Phase:** Phase 2D-FFI (JNI Ledger Wrapper with signing)
