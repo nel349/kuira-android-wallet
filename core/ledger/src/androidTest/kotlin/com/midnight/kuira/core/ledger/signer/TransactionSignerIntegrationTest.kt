@@ -162,12 +162,11 @@ class TransactionSignerIntegrationTest {
     fun testSignEmptyData() {
         val emptyData = ByteArray(0)
 
-        try {
-            TransactionSigner.signData(TEST_PRIVATE_KEY, emptyData)
-            fail("Should throw IllegalArgumentException for empty data")
-        } catch (e: IllegalArgumentException) {
-            assertTrue(e.message!!.contains("cannot be empty"))
-        }
+        // Empty data is allowed - Schnorr can sign empty messages (used in ZKP protocols)
+        val signature = TransactionSigner.signData(TEST_PRIVATE_KEY, emptyData)
+
+        assertNotNull("Should be able to sign empty data", signature)
+        assertEquals("Signature should be 64 bytes even for empty data", 64, signature!!.size)
     }
 
     @Test

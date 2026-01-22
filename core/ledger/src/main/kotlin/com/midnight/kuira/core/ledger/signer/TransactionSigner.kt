@@ -101,7 +101,7 @@ object TransactionSigner {
      */
     fun signData(privateKey: ByteArray, data: ByteArray): ByteArray? {
         require(privateKey.size == 32) { "Private key must be 32 bytes, got ${privateKey.size}" }
-        require(data.isNotEmpty()) { "Data to sign cannot be empty" }
+        // Note: Empty data is allowed - Schnorr can sign empty messages (used in ZKP protocols)
 
         return useSigningKey(privateKey) { signingKeyPtr ->
             nativeSignData(signingKeyPtr, data)
@@ -135,6 +135,42 @@ object TransactionSigner {
         return useSigningKey(privateKey) { signingKeyPtr ->
             nativeGetVerifyingKey(signingKeyPtr)
         }
+    }
+
+    /**
+     * Verifies a Schnorr BIP-340 signature.
+     *
+     * **Purpose:**
+     * - Cryptographic verification of signatures
+     * - Testing signature correctness
+     * - Cross-compatibility validation with Lace wallet / Midnight blockchain
+     *
+     * **Usage Example:**
+     * ```kotlin
+     * val publicKey: ByteArray = ... // 32 bytes BIP-340 public key
+     * val message: ByteArray = ... // Original message that was signed
+     * val signature: ByteArray = ... // 64-byte Schnorr signature
+     *
+     * val isValid = TransactionSigner.verifySignature(publicKey, message, signature)
+     * if (isValid) {
+     *     println("Signature is cryptographically valid!")
+     * } else {
+     *     println("Signature verification failed - invalid or tampered")
+     * }
+     * ```
+     *
+     * @param publicKey 32-byte BIP-340 public key
+     * @param message Message that was signed (arbitrary bytes)
+     * @param signature 64-byte Schnorr signature (R || s format)
+     * @return true if signature is valid for the given public key and message, false otherwise
+     * @throws IllegalArgumentException if input lengths are invalid
+     */
+    fun verifySignature(publicKey: ByteArray, message: ByteArray, signature: ByteArray): Boolean {
+        require(publicKey.size == 32) { "Public key must be 32 bytes, got ${publicKey.size}" }
+        // Note: Empty messages are allowed - matches signData() behavior
+        require(signature.size == 64) { "Signature must be 64 bytes, got ${signature.size}" }
+
+        return nativeVerifySignature(publicKey, message, signature)
     }
 
     // ============================================================================
@@ -211,6 +247,20 @@ object TransactionSigner {
      * @return 32-byte public key, or null on error
      */
     private external fun nativeGetVerifyingKey(signingKeyPtr: Long): ByteArray?
+
+    /**
+     * JNI: Verifies a Schnorr BIP-340 signature.
+     *
+     * @param publicKey 32-byte BIP-340 public key
+     * @param message Message that was signed
+     * @param signature 64-byte Schnorr signature
+     * @return true if signature is valid, false otherwise
+     */
+    private external fun nativeVerifySignature(
+        publicKey: ByteArray,
+        message: ByteArray,
+        signature: ByteArray
+    ): Boolean
 
     // ============================================================================
     // Internal Wrappers for Testing - Delegate to private external functions

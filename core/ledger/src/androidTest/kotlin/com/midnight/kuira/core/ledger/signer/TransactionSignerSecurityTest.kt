@@ -258,19 +258,8 @@ class TransactionSignerSecurityTest {
         }
     }
 
-    @Test
-    fun testInvalidData_EmptyArray() {
-        val validKey = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
-        val emptyData = ByteArray(0)
-
-        try {
-            TransactionSigner.signData(validKey, emptyData)
-            fail("Should throw IllegalArgumentException for empty data")
-        } catch (e: IllegalArgumentException) {
-            assertTrue("Error message should mention 'cannot be empty'",
-                      e.message!!.contains("cannot be empty"))
-        }
-    }
+    // Note: testInvalidData_EmptyArray removed - empty data is now ALLOWED
+    // See testVerifySignature_EmptyMessage for empty message handling
 
     // ============================================================================
     // Concurrent Access Tests
@@ -321,8 +310,150 @@ class TransactionSignerSecurityTest {
     }
 
     // ============================================================================
-    // Cryptographic Correctness Tests
+    // Cryptographic Correctness Tests - SIGNATURE VERIFICATION
     // ============================================================================
+
+    @Test
+    fun testSignatureIsVerifiable_WithCorrectPublicKey() {
+        val privateKey = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
+        val message = "test message for verification".toByteArray()
+
+        // Sign the message
+        val signature = TransactionSigner.signData(privateKey, message)
+        assertNotNull("Signature should not be null", signature)
+        assertEquals("Signature should be 64 bytes", 64, signature!!.size)
+
+        // Get public key
+        val publicKey = TransactionSigner.getPublicKey(privateKey)
+        assertNotNull("Public key should not be null", publicKey)
+        assertEquals("Public key should be 32 bytes", 32, publicKey!!.size)
+
+        // CRITICAL: Verify signature is cryptographically valid
+        val isValid = TransactionSigner.verifySignature(publicKey, message, signature)
+        assertTrue("Signature MUST be verifiable with correct public key", isValid)
+
+        println("✅ Signature verification passed: cryptographically valid")
+    }
+
+    @Test
+    fun testSignatureVerificationFails_WithWrongMessage() {
+        val privateKey = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
+        val originalMessage = "original message".toByteArray()
+        val tamperedMessage = "tampered message".toByteArray()
+
+        // Sign original message
+        val signature = TransactionSigner.signData(privateKey, originalMessage)
+        assertNotNull(signature)
+
+        // Get public key
+        val publicKey = TransactionSigner.getPublicKey(privateKey)
+        assertNotNull(publicKey)
+
+        // Verification should PASS for original message
+        assertTrue(
+            "Should verify with correct message",
+            TransactionSigner.verifySignature(publicKey!!, originalMessage, signature!!)
+        )
+
+        // Verification should FAIL for tampered message
+        assertFalse(
+            "Should NOT verify with wrong message",
+            TransactionSigner.verifySignature(publicKey, tamperedMessage, signature)
+        )
+
+        println("✅ Signature verification correctly rejects tampered messages")
+    }
+
+    @Test
+    fun testSignatureVerificationFails_WithWrongPublicKey() {
+        val privateKey1 = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
+        val privateKey2 = hexToBytes("B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF")
+        val message = "test message".toByteArray()
+
+        // Sign with key1
+        val signature = TransactionSigner.signData(privateKey1, message)
+        assertNotNull(signature)
+
+        // Get public keys
+        val publicKey1 = TransactionSigner.getPublicKey(privateKey1)
+        val publicKey2 = TransactionSigner.getPublicKey(privateKey2)
+        assertNotNull(publicKey1)
+        assertNotNull(publicKey2)
+
+        // Verification should PASS with correct public key
+        assertTrue(
+            "Should verify with correct public key",
+            TransactionSigner.verifySignature(publicKey1!!, message, signature!!)
+        )
+
+        // Verification should FAIL with wrong public key
+        assertFalse(
+            "Should NOT verify with wrong public key",
+            TransactionSigner.verifySignature(publicKey2!!, message, signature)
+        )
+
+        println("✅ Signature verification correctly rejects wrong public keys")
+    }
+
+    @Test
+    fun testBip340TestVectorsSignaturesVerify() {
+        // Test that public keys we derive produce verifiable signatures
+        BIP340_TEST_VECTORS.forEach { (privateKey, expectedPubKey, message) ->
+            // Get public key
+            val actualPubKey = TransactionSigner.getPublicKey(privateKey)
+            assertNotNull("Public key should be derived", actualPubKey)
+            assertArrayEquals("Public key should match test vector", expectedPubKey, actualPubKey)
+
+            // Sign a test message
+            val testMessage = message.toByteArray()
+            val signature = TransactionSigner.signData(privateKey, testMessage)
+            assertNotNull("Signature should be created", signature)
+            assertEquals("Signature should be 64 bytes", 64, signature!!.size)
+
+            // CRITICAL: Verify signature with derived public key
+            val isValid = TransactionSigner.verifySignature(actualPubKey!!, testMessage, signature)
+            assertTrue("BIP-340 test vector signature must verify", isValid)
+        }
+
+        println("✅ All BIP-340 test vector signatures verify successfully")
+    }
+
+    @Test
+    fun testMultipleSignaturesOfSameData_AllVerifyCorrectly() {
+        val privateKey = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
+        val message = "same message".toByteArray()
+        val publicKey = TransactionSigner.getPublicKey(privateKey)
+        assertNotNull(publicKey)
+
+        // Sign same message 5 times (random nonces produce different signatures)
+        val signatures = List(5) {
+            TransactionSigner.signData(privateKey, message)
+        }
+
+        // All signatures should be non-null and 64 bytes
+        signatures.forEach { sig ->
+            assertNotNull("Signature should not be null", sig)
+            assertEquals("Signature should be 64 bytes", 64, sig!!.size)
+        }
+
+        // All signatures should be DIFFERENT (random nonce)
+        for (i in 0 until signatures.size - 1) {
+            for (j in i + 1 until signatures.size) {
+                assertFalse(
+                    "Signatures $i and $j should differ",
+                    signatures[i]!!.contentEquals(signatures[j]!!)
+                )
+            }
+        }
+
+        // But ALL signatures should VERIFY correctly
+        signatures.forEachIndexed { index, sig ->
+            val isValid = TransactionSigner.verifySignature(publicKey!!, message, sig!!)
+            assertTrue("Signature $index must verify despite different nonce", isValid)
+        }
+
+        println("✅ All 5 different signatures of same data verify correctly")
+    }
 
     @Test
     fun testSignatureFormat_ExactlyRAndS() {
@@ -369,7 +500,107 @@ class TransactionSignerSecurityTest {
     }
 
     // ============================================================================
-    // Edge Cases
+    // Edge Cases - Malformed Inputs
+    // ============================================================================
+
+    @Test
+    fun testVerifySignature_MalformedSignature_AllZeros() {
+        val publicKey = hexToBytes("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9")
+        val message = "test message".toByteArray()
+        val malformedSig = ByteArray(64) { 0 } // All zeros signature
+
+        val isValid = TransactionSigner.verifySignature(publicKey, message, malformedSig)
+        assertFalse("Malformed signature (all zeros) should be rejected", isValid)
+
+        println("✅ All-zero signature correctly rejected")
+    }
+
+    @Test
+    fun testVerifySignature_MalformedSignature_RandomBytes() {
+        val publicKey = hexToBytes("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9")
+        val message = "test message".toByteArray()
+        val randomSig = ByteArray(64) { it.toByte() } // Sequential bytes 0x00..0x3F
+
+        val isValid = TransactionSigner.verifySignature(publicKey, message, randomSig)
+        assertFalse("Malformed signature (random bytes) should be rejected", isValid)
+
+        println("✅ Random signature bytes correctly rejected")
+    }
+
+    @Test
+    fun testVerifySignature_InvalidPublicKey_AllZeros() {
+        val invalidPublicKey = ByteArray(32) { 0 } // All zeros (not a valid curve point)
+        val message = "test message".toByteArray()
+
+        // Create a valid signature with a valid key
+        val validPrivateKey = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
+        val signature = TransactionSigner.signData(validPrivateKey, message)
+        assertNotNull(signature)
+
+        // Try to verify with invalid public key
+        val isValid = TransactionSigner.verifySignature(invalidPublicKey, message, signature!!)
+        assertFalse("Invalid public key (all zeros) should fail verification", isValid)
+
+        println("✅ All-zero public key correctly rejected")
+    }
+
+    @Test
+    fun testVerifySignature_WrongSignatureLength_TooShort() {
+        val publicKey = hexToBytes("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9")
+        val message = "test".toByteArray()
+        val shortSig = ByteArray(32) { 0x42 } // Only 32 bytes instead of 64
+
+        try {
+            TransactionSigner.verifySignature(publicKey, message, shortSig)
+            fail("Should throw IllegalArgumentException for wrong signature length")
+        } catch (e: IllegalArgumentException) {
+            assertTrue("Error message should mention 64 bytes", e.message!!.contains("64 bytes"))
+            assertTrue("Error message should mention actual length", e.message!!.contains("32"))
+        }
+
+        println("✅ Too-short signature correctly rejected with clear error")
+    }
+
+    @Test
+    fun testVerifySignature_WrongSignatureLength_TooLong() {
+        val publicKey = hexToBytes("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9")
+        val message = "test".toByteArray()
+        val longSig = ByteArray(128) { 0x42 } // 128 bytes instead of 64
+
+        try {
+            TransactionSigner.verifySignature(publicKey, message, longSig)
+            fail("Should throw IllegalArgumentException for wrong signature length")
+        } catch (e: IllegalArgumentException) {
+            assertTrue("Error message should mention 64 bytes", e.message!!.contains("64 bytes"))
+            assertTrue("Error message should mention actual length", e.message!!.contains("128"))
+        }
+
+        println("✅ Too-long signature correctly rejected with clear error")
+    }
+
+    @Test
+    fun testVerifySignature_EmptyMessage() {
+        val privateKey = hexToBytes("0000000000000000000000000000000000000000000000000000000000000003")
+        val emptyMessage = ByteArray(0) // Empty message
+
+        // Sign empty message
+        val signature = TransactionSigner.signData(privateKey, emptyMessage)
+        assertNotNull("Should sign empty message", signature)
+        assertEquals("Signature should be 64 bytes", 64, signature!!.size)
+
+        // Get public key
+        val publicKey = TransactionSigner.getPublicKey(privateKey)
+        assertNotNull("Public key should be derived", publicKey)
+
+        // Verify empty message signature
+        val isValid = TransactionSigner.verifySignature(publicKey!!, emptyMessage, signature)
+        assertTrue("Empty message signature should verify correctly", isValid)
+
+        println("✅ Empty message signature verifies correctly")
+    }
+
+    // ============================================================================
+    // Edge Cases - Extreme Values
     // ============================================================================
 
     @Test
