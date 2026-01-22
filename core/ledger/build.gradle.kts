@@ -39,6 +39,9 @@ dependencies {
     // Coroutines (for suspend functions in future phases)
     implementation(libs.kotlinx.coroutines.android)
 
+    // Crypto module (for TransactionSigner native library)
+    implementation(project(":core:crypto"))
+
     // Indexer module (for UTXO management and selection)
     implementation(project(":core:indexer"))
 
