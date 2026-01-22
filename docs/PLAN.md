@@ -1,8 +1,12 @@
 # Kuira Wallet - Implementation Plan
 
 **Project:** Midnight Wallet for Android
-**Estimate:** 85-125 hours across 7 phases
-**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B ✅ Complete | **Phase 2 (Unshielded TX) 🔄 In Progress**
+**Estimate:** 103-152 hours across 8 phases (revised: +18-27h from original plan)
+**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B (Unshielded) ✅ Complete | **Phase 2 🔄 In Progress (83%)**
+
+**⚠️ Major Revisions:**
+- Shielded balance tracking (Phase 4B-Shielded) NOT implemented: +8-12h
+- Contract transactions (Phase 5) more complex than estimated: +10-15h
 
 See **PROGRESS.md** for current status and hours invested.
 
@@ -16,16 +20,18 @@ See **PROGRESS.md** for current status and hours invested.
 **Current Structure:**
 1. ✅ **Phase 1 Complete**: Crypto/keys working (41h)
 2. ✅ **Phase 4A-Full Complete**: GraphQL HTTP client + sync engine (21h)
-3. ✅ **Phase 4B Complete**: WebSocket subscriptions + UTXO tracking (23.5h)
-4. ✅ **Phase 4B-UI Complete**: Balance display (7h)
-5. 🔄 **Phase 2 In Progress**: Unshielded transactions (15-20h)
-6. ⏭️ **Phase 3 Next**: Shielded transactions (20-25h)
+3. ✅ **Phase 4B Complete**: WebSocket subscriptions + **UNSHIELDED** UTXO tracking (23.5h)
+4. ✅ **Phase 4B-UI Complete**: **UNSHIELDED** balance display (7h)
+5. 🔄 **Phase 2 In Progress**: Unshielded transactions (37h/22-30h, 83%)
+6. ⚠️ **Phase 4B-Shielded MISSING**: Shielded balance tracking NOT implemented (est: 8-12h)
+7. ⏭️ **Phase 3 Next**: Shielded transactions (requires Phase 4B-Shielded first)
 
 **Why This Order?**
 1. **Phase 1 first**: Must have keys before anything else ✅
-2. **Phase 4 before transactions**: Need balance viewing to test transactions ✅
-3. **Phase 2 before Phase 3**: Simpler transactions first (no ZK proofs), build confidence
-4. **No "lite" option**: Midnight architecture requires WebSocket + local UTXO tracking ✅
+2. **Phase 4B (unshielded) before Phase 2**: Need balance viewing to test transactions ✅
+3. **Phase 2 before Phase 3**: Simpler transactions first (no ZK proofs), build confidence 🔄
+4. **⚠️ Phase 4B-Shielded before Phase 3**: MUST implement shielded balance tracking before shielded transactions
+5. **No "lite" option**: Midnight architecture requires WebSocket + local UTXO tracking ✅
 
 ---
 
@@ -40,12 +46,13 @@ See **PROGRESS.md** for current status and hours invested.
 | ↳ 4B-2: UTXO Database | Room database + subscriptions | ~10h | 2.5h | ✅ Complete |
 | ↳ 4B-3: Balance Repository | Repository layer + ViewModels | ~3h | 6h | ✅ Complete |
 | ↳ 4B-4: UI Integration | Display balances (Compose) | ~5-8h | 7h | ✅ Complete |
-| **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 22-30h | 24h | 🔄 In Progress (80%) |
+| **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 22-30h | 37h | 🔄 In Progress (83%) |
+| **Phase 4B-Shielded: Shielded Balances** | ⚠️ **MISSING** - Shielded UTXO tracking | 8-12h | 0h | ⏸️ Not Started |
 | **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | 0h | ⏸️ Not Started |
-| **Phase 5: DApp Connector** | Contract interaction | 15-20h | 0h | ⏸️ Not Started |
+| **Phase 5: DApp Connector** | Contract interaction via WebView | 25-35h | 0h | ⏸️ Not Started |
 | **Phase 6: UI & Polish** | Production-ready app | 15-20h | 0h | ⏸️ Not Started |
 
-**Progress:** 109.5h / ~120h estimated (91% complete)
+**Progress:** 122.5h / ~140h revised estimate (88% complete - accounting for missing shielded balances + complex contract transactions)
 
 ---
 
@@ -158,10 +165,12 @@ We just need to query the indexer: "What's the balance for this address?"
 
 ---
 
-## Phase 4B: WebSocket + UTXO Tracking (25-35h, 11h invested)
+## Phase 4B: WebSocket + UTXO Tracking ✅ COMPLETE (23.5h actual / 25-35h estimate)
 
 **Goal:** Real-time transaction subscriptions + local UTXO database for balance calculation
-**Status:** 🔄 In Progress (WebSocket + UTXO tracking complete, UI integration next)
+**Status:** ✅ **COMPLETE** - Unshielded balance tracking working end-to-end
+
+**⚠️ IMPORTANT LIMITATION:** Only UNSHIELDED balances implemented. Shielded balance tracking deferred (see "Missing: Shielded Balances" section below).
 
 **Critical Discovery:**
 Midnight's indexer does NOT provide simple balance query APIs like `getUnshieldedBalance(address)`. Light wallets must:
@@ -415,30 +424,123 @@ docs/
 └── COVERAGE_REPORT_SUMMARY.md        # Coverage metrics breakdown
 ```
 
-### 4B-4: UI Integration ⏸️ PENDING (~5-8h)
+### 4B-4: UI Integration ✅ COMPLETE (7h actual / ~5-8h estimate)
 
 **Goal:** Display balances to user
+**Status:** ✅ Complete - January 18, 2026
 
-**Deliverables:**
-- [ ] Balance screen (Jetpack Compose)
-- [ ] Display unshielded address & balance
-- [ ] Display shielded address & balance
-- [ ] Pull-to-refresh gesture
-- [ ] "Last updated X min ago" timestamp
-- [ ] Loading states (skeleton screens)
-- [ ] Error handling UI (offline, network errors)
-- [ ] Copy address button
+**⚠️ LIMITATION:** Only displays UNSHIELDED balances. Shielded balance UI not implemented.
+
+**Completed Deliverables:**
+- [x] Balance screen (Jetpack Compose)
+- [x] Display unshielded address & balance (multiple tokens)
+- [x] Pull-to-refresh gesture
+- [x] "Last updated X min ago" timestamp with live updates
+- [x] Loading states (skeleton screens)
+- [x] Error handling UI (offline, network errors)
+- [x] Total balance calculation across all tokens
+- [ ] ~~Display shielded address & balance~~ **DEFERRED** (not implemented)
+- [ ] ~~Copy address button~~ **DEFERRED** (not critical for MVP)
+
+**Test Coverage:**
+- 69 tests for BalanceViewModel
+- 93.3% method coverage
+- 80.7% line coverage
+- All critical paths tested
 
 **Files:**
 ```
-feature/wallet/
-├── balance/
-│   ├── BalanceScreen.kt          # Composable UI
-│   ├── BalanceViewModel.kt       # State management
-│   └── BalanceUiState.kt         # UI state model
-└── navigation/
-    └── WalletNavigation.kt       # Navigation setup
+feature/balance/src/main/kotlin/.../
+├── BalanceViewModel.kt               # State management (306 lines)
+├── BalanceUiState.kt                 # UI state sealed class
+├── BalanceDisplay.kt                 # Display model
+└── BalanceScreen.kt                  # Composable UI
+
+feature/balance/src/test/kotlin/.../
+└── BalanceViewModelTest.kt           # 69 comprehensive tests (1195 lines)
 ```
+
+---
+
+## ⚠️ Missing: Shielded Balance Tracking (Phase 4B-Shielded)
+
+**Status:** ⏸️ **DEFERRED** - Not implemented in Phase 4B
+**Estimate:** 8-12 hours
+**Priority:** HIGH - Required before Phase 3 (Shielded Transactions)
+
+### What Was Built (Phase 4B)
+✅ **Unshielded balances ONLY:**
+- `subscribeToUnshieldedTransactions(address)` - WebSocket subscription
+- `UnshieldedUtxoEntity` - Room database entity
+- `UnshieldedUtxoDao` - Database operations
+- `UnshieldedBalanceManager` - UTXO tracking
+- `BalanceViewModel` - UI state management
+- Balance display UI (Compose)
+
+### What's Missing (Shielded Balances)
+❌ **Shielded balance tracking NOT implemented:**
+- `subscribeToShieldedTransactions(sessionId)` - WebSocket subscription
+- `ShieldedUtxoEntity` - Room database entity (mentioned but not created)
+- `ShieldedUtxoDao` - Database operations (mentioned but not created)
+- `ShieldedBalanceManager` - UTXO tracking for shielded pool
+- Shielded balance calculation (requires decryption with shielded keys)
+- Shielded balance display in UI
+
+### Why This Matters
+**Cannot implement Phase 3 (Shielded Transactions) without this:**
+- Need to track shielded UTXOs before spending them
+- Need to decrypt shielded notes with encryption keys from Phase 1B
+- Need to display shielded balances to test transactions
+
+### Implementation Requirements (When Ready)
+
+**GraphQL Subscription:**
+```graphql
+subscription ShieldedTransactions($sessionId: String!) {
+  shieldedTransactions(sessionId: $sessionId) {
+    commitments     # Array of note commitments
+    nullifiers      # Array of spent nullifiers
+    timestamp
+    # NOTE: Data is encrypted, requires decryption with enc_pk
+  }
+}
+```
+
+**Database Schema:**
+```kotlin
+@Entity(tableName = "shielded_utxos")
+data class ShieldedUtxoEntity(
+    @PrimaryKey val commitment: String,        // 32-byte note commitment
+    val encryptedNote: ByteArray,              // Encrypted note data
+    val value: Long,                           // Decrypted value
+    val owner: String,                         // Shielded address (enc_pk)
+    val tokenType: String,
+    val spent: Boolean,
+    val spentAt: Long?,
+    val createdAt: Long
+)
+```
+
+**Decryption Required:**
+- Use `enc_pk` (encryption public key) from Phase 1B
+- Decrypt shielded notes to extract value
+- Match commitments to determine spendable UTXOs
+- Track nullifiers to detect spent notes
+
+**Estimate Breakdown:**
+- Shielded subscription: 2-3h
+- Note decryption logic: 3-4h (may require JNI to Rust)
+- Database + DAO: 1-2h
+- Balance manager: 2-3h
+- Testing: 2-3h
+
+**Dependencies:**
+- ✅ Phase 1B: Shielded key derivation (encryption keys)
+- ✅ Phase 4B: WebSocket client infrastructure
+- ⏸️ **Note decryption:** May need Rust FFI (similar to Phase 2D-FFI)
+
+**Recommendation:**
+Implement this BEFORE starting Phase 3 (Shielded Transactions). Can't send shielded transactions without knowing your shielded balance.
 
 ---
 
@@ -494,7 +596,7 @@ core/network/
 ## Phase 2: Unshielded Transactions (22-30h)
 
 **Goal:** Send/receive transparent tokens (no privacy)
-**Status:** 🔄 In Progress - Phase 2A/2B/2C/2D-FFI complete (24h/22-30h, 80%)
+**Status:** 🔄 In Progress - Phase 2A/2B/2C/2D-FFI complete (37h/22-30h, 83%)
 
 **See:** **`docs/PHASE_2_PLAN.md`** for detailed implementation breakdown
 
@@ -510,18 +612,19 @@ core/network/
 - Schnorr signing via midnight-ledger JNI (NOT pure Kotlin)
 - SCALE codec via midnight-ledger FFI (same as TypeScript SDK)
 
-**Completed Sub-Phases:** ✅ Phase 2A, 2B, 2C, 2D-FFI (24h)
-- ✅ 2A: Transaction models (Intent, UnshieldedOffer, UtxoSpend) - 52 tests (4h)
-- ✅ 2B: UTXO Manager with coin selection (smallest-first) - 25 tests (3h)
-- ✅ 2C: Transaction Builder - 11 tests (4h)
-- ✅ 2D-FFI: Rust FFI for Schnorr signing - 34 tests, **10/10 quality** (13h)
+**Completed Sub-Phases:** ✅ Phase 2A, 2B, 2C, 2D-FFI (37h actual)
+- ✅ 2A: Transaction models (Intent, UnshieldedOffer, UtxoSpend) - 52 tests (3h)
+- ✅ 2B: UTXO Manager with coin selection (smallest-first) - 25 tests (3.5h)
+- ✅ 2C: Transaction Builder - 10 tests (1.5h)
+- ✅ 2D-FFI: JNI Ledger Wrapper (Schnorr signing + verification) - 50 tests, **production-ready** (29h)
 
 **Deliverables:**
 - [x] Transaction models (Intent, UnshieldedOffer, UtxoSpend, UtxoOutput)
 - [x] UTXO selection (smallest-first strategy for privacy)
 - [x] Transaction builder (balancing, TTL, change calculation)
-- [x] Rust FFI layer (Schnorr signing, cryptographic correctness proven)
-- [ ] JNI C bridge (Kotlin → C → Rust)
+- [x] Rust FFI layer (Schnorr signing, signature verification, cryptographic correctness proven)
+- [x] JNI C bridge (Kotlin → C → Rust, security-hardened with zeroization)
+- [x] Kotlin wrapper (TransactionSigner.kt, production-ready, 50 Android tests)
 - [ ] Transaction submission via RPC
 - [ ] Send UI screen
 
@@ -536,23 +639,27 @@ core/network/
 ```
 core/ledger/
 ├── model/
-│   ├── Intent.kt                      # ✅ Complete
-│   ├── UnshieldedOffer.kt             # ✅ Complete
-│   ├── UtxoSpend.kt                   # ✅ Complete
-│   └── UtxoOutput.kt                  # ✅ Complete
+│   ├── Intent.kt                      # ✅ Complete (Phase 2A)
+│   ├── UnshieldedOffer.kt             # ✅ Complete (Phase 2A)
+│   ├── UtxoSpend.kt                   # ✅ Complete (Phase 2A)
+│   └── UtxoOutput.kt                  # ✅ Complete (Phase 2A)
 ├── builder/
-│   └── UnshieldedTransactionBuilder.kt # ✅ Complete
+│   └── UnshieldedTransactionBuilder.kt # ✅ Complete (Phase 2C)
 └── signer/
-    └── TransactionSigner.kt           # ⏸️ Next (Kotlin wrapper)
+    └── TransactionSigner.kt           # ✅ Complete (Phase 2D-FFI)
 
 rust/kuira-crypto-ffi/                 # ✅ Complete (Phase 2D-FFI)
 ├── src/
 │   ├── lib.rs                         # ✅ Shielded keys (Phase 1B)
-│   └── transaction_ffi.rs             # ✅ Schnorr signing (Phase 2D-FFI)
+│   └── transaction_ffi.rs             # ✅ Schnorr signing + verification (Phase 2D-FFI)
 ├── Cargo.toml                         # ✅ midnight-ledger v6.1.0-alpha.5
-└── jni/kuira_crypto_jni.c             # ⏸️ Next (JNI bridge)
+└── jni/kuira_crypto_jni.c             # ✅ Complete - JNI bridge with security hardening
 
-docs/                                  # ✅ Complete (Phase 2D-FFI)
+core/ledger/src/androidTest/kotlin/.../signer/
+├── TransactionSignerIntegrationTest.kt  # ✅ 20 tests (basic functionality)
+└── TransactionSignerSecurityTest.kt     # ✅ 30 tests (security + verification)
+
+docs/reviews/                          # ✅ Complete (Phase 2D-FFI)
 ├── PHASE_2D_FFI_CODE_REVIEW.md        # ✅ Peer review (found 9 issues)
 ├── PHASE_2D_FFI_TEST_REVIEW.md        # ✅ Test review (found false positive)
 ├── PHASE_2D_FFI_FIXES_APPLIED.md      # ✅ All fixes applied (5.7 → 8.5 quality)
@@ -563,20 +670,200 @@ docs/                                  # ✅ Complete (Phase 2D-FFI)
 
 ---
 
-## Phase 5: DApp Connector (15-20h)
+## Phase 5: DApp Connector & Contract Transactions (25-35h)
 
-**Goal:** Interact with Midnight smart contracts
+**Goal:** Enable browser DApps to interact with wallet for smart contract transactions
+**Status:** ⏸️ Investigation Complete (see `PHASE_5_CONTRACT_TRANSACTIONS_INVESTIGATION.md`)
+**Estimate:** 25-35 hours (revised from 15-20h after comprehensive investigation)
 
-**Architecture:**
-- Deep link protocol
-- Sign transaction requests
-- Return results to DApp
+**⚠️ CRITICAL FINDING:** Contract transactions are significantly more complex than originally estimated. Wallet acts as **transaction balancer and relayer** while DApps handle business logic.
 
-**Deliverables:**
-- [ ] Deep link handler
-- [ ] Request approval UI
-- [ ] Contract call signing
-- [ ] Response protocol
+### What We Need to Build
+
+**Core Components:**
+
+1. **DApp Connector API** (8-10h)
+   - WebView injection (`window.midnight.mnLace`)
+   - Connection approval flow
+   - Permission management
+   - Service URI configuration (indexer, prover, node)
+
+2. **Transaction Balancing** (6-8h)
+   - Parse DApp-created transactions
+   - Calculate fees
+   - Select UTXOs for fee payment
+   - Add fee inputs/outputs
+   - Seal transaction with signatures
+
+3. **Transaction Submission** (3-4h)
+   - Submit contract transactions to network
+   - Track status (building → finalized)
+   - Update UTXO pools
+   - Notify DApp of status
+
+4. **State Management** (4-6h)
+   - Track contract instances
+   - Store encrypted private state
+   - Provide witness data to DApps
+   - Synchronize with on-chain state
+
+5. **UI/UX** (4-6h)
+   - DApp connection approval screen
+   - Transaction confirmation dialog
+   - Transaction status updates
+   - Connected DApps management
+
+### Architecture: WebView Injection
+
+**Pattern:** Similar to MetaMask/WalletConnect
+```typescript
+// DApp code
+if (window.midnight && window.midnight.mnLace) {
+  const wallet = await mnLace.enable();
+  const tx = await wallet.balanceUnsealedTransaction(contractTx);
+  await wallet.submitTransaction(tx);
+}
+```
+
+**Wallet provides:**
+- Connection management
+- Transaction balancing (add fees)
+- Transaction signing & sealing
+- Submission to network
+- Status tracking
+
+**DApp provides:**
+- Business logic
+- Circuit execution
+- ZK proof generation
+- Private state witnesses
+
+### Key Differences from Simple Transfers
+
+| Aspect | Simple Transfer | Contract Call |
+|--------|----------------|---------------|
+| Transaction Type | Token movement only | Circuit execution + state change |
+| Proof Generation | None | Zero-knowledge proofs required |
+| Wallet Role | Create entire transaction | Balance and submit only |
+| Data Flow | Wallet → Network | DApp → Wallet → Network |
+| Complexity | Low (Phase 2) | High (needs DApp connector) |
+
+### Dependencies
+
+**Prerequisites (Must Complete First):**
+- ⏸️ Phase 2E: Transaction submission (RPC client)
+- ⏸️ Phase 2F: Send UI (transaction status patterns)
+- ⏸️ Phase 4B-Shielded: Shielded balances (for shielded contracts)
+- ⏸️ Phase 3: Shielded transactions (understand shielded flow)
+
+**Can Reuse:**
+- ✅ Phase 1B: Shielded keys (for witness data)
+- ✅ Phase 2B: UTXO selection (for fee payment)
+- ✅ Phase 2C: Transaction builder (balancing logic)
+- ✅ Phase 2D-FFI: Transaction signing (seal transactions)
+- ✅ Phase 4B: WebSocket subscriptions (status tracking)
+
+### Implementation Phases
+
+**5A: DApp Connector Foundation** (8-10h)
+- WebView JS bridge
+- Connection approval UI
+- Permission management
+- Service configuration
+
+**5B: Transaction Balancing** (6-8h)
+- Parse incoming transactions
+- Fee estimation
+- UTXO selection for fees
+- Transaction sealing
+
+**5C: Transaction Submission** (3-4h)
+- Submit to network
+- Status tracking
+- UTXO updates
+
+**5D: State Management** (4-6h)
+- Contract instance tracking
+- Private state storage (encrypted)
+- Witness data provider
+
+**5E: UI/UX** (4-6h)
+- Connection approval screen
+- Transaction confirmation dialog
+- Status updates
+- DApp management screen
+
+### Security Considerations
+
+**Critical Requirements:**
+- Validate DApp origin (prevent phishing)
+- Encrypt private state with user keys
+- Show human-readable transaction details
+- Require explicit user confirmation
+- Allow revoking DApp access
+
+### Testing Strategy
+
+**Test with Real DApp:**
+- Use Midnight's example bulletin board DApp
+- Connect wallet to DApp
+- Call circuit function (post message)
+- Verify transaction on-chain
+- Check state updates
+
+### Why More Than Original Estimate?
+
+**Original:** 15-20h assumed simple deep linking
+**Reality:** Full DApp connector infrastructure needed
+- WebView injection more complex than deep linking
+- Transaction balancing logic separate from transfers
+- State management not considered
+- UI/UX for connection approval not estimated
+
+### Files to Create
+
+```
+core/dapp/
+├── connector/
+│   ├── DAppConnectorService.kt      # WebView JS bridge
+│   ├── DAppPermissionManager.kt     # Connection permissions
+│   └── WalletApi.kt                 # Exposed API to DApps
+├── balancer/
+│   ├── ContractTransactionBalancer.kt  # Balance contract txs
+│   ├── FeeEstimator.kt              # Calculate fees
+│   └── TransactionSealer.kt         # Seal with signatures
+├── state/
+│   ├── ContractStateManager.kt      # Private state management
+│   ├── WitnessProvider.kt           # Provide witness data
+│   └── ContractInstanceDao.kt       # Database access
+└── ui/
+    ├── DAppConnectionScreen.kt      # Connection approval
+    ├── ContractTxConfirmationDialog.kt  # Transaction review
+    ├── TransactionStatusDialog.kt   # Status updates
+    └── ConnectedDAppsScreen.kt      # Manage connections
+
+core/dapp/database/
+├── ContractInstanceEntity.kt        # Contract instances
+└── PrivateStateEntity.kt            # Private state (encrypted)
+```
+
+### Recommendation
+
+**Priority:** DEFER until after Phase 2, 4B-Shielded, and Phase 3
+
+**Reason:**
+- Need complete transaction infrastructure first (unshielded + shielded)
+- Contract transactions build on top of basic transactions
+- 25-35h is significant investment
+- DApp ecosystem still developing
+
+**Suggested Order:**
+1. ✅ Finish Phase 2 (Unshielded TX) - 2-3h remaining
+2. Next: Phase 4B-Shielded (Shielded Balances) - 8-12h
+3. Next: Phase 3 (Shielded TX) - 20-25h
+4. Then: Phase 5 (Contract TX) - 25-35h
+
+**Total to Full DApp Support:** ~55-75h from current state
 
 ---
 
