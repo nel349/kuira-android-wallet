@@ -18,6 +18,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("1000000"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -65,6 +66,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger.ONE,
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
 
@@ -85,6 +87,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger.ONE,
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -112,6 +115,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger.ONE,
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -139,6 +143,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("150"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val recipientOutput = UtxoOutput(
@@ -169,6 +174,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -194,6 +200,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("1000"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val dustInput = UtxoSpend(
@@ -201,6 +208,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("500"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = "a".repeat(64)
         )
         val nightOutput = UtxoOutput(
@@ -231,6 +239,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -257,6 +266,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -284,6 +294,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val input2 = UtxoSpend(
@@ -291,6 +302,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("200"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -319,6 +331,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("300"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output1 = UtxoOutput(
@@ -352,6 +365,7 @@ class UnshieldedOfferTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(

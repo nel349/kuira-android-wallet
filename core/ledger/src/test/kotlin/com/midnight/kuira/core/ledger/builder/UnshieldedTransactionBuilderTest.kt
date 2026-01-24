@@ -9,6 +9,7 @@ import com.midnight.kuira.core.indexer.database.UtxoState
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import com.midnight.kuira.core.indexer.utxo.UtxoSelector
 import com.midnight.kuira.core.ledger.model.UtxoOutput
+import com.midnight.kuira.core.ledger.model.UtxoSpend
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -44,6 +45,7 @@ class UnshieldedTransactionBuilderTest {
             intentHash = intentHash,
             outputIndex = outputIndex,
             owner = senderAddress,
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,  // Test public key for spending
             tokenType = tokenType,
             value = value.toString(),
             ctime = System.currentTimeMillis() / 1000,

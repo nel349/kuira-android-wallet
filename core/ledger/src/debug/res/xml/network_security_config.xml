@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Configuration for Debug Builds
+
+  SECURITY WARNING: This configuration allows cleartext (HTTP) traffic to localhost.
+  This is ONLY for testing with local Midnight node.
+  NEVER use this in production builds!
+-->
+<network-security-config>
+    <!-- Allow cleartext traffic to localhost for testing -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>  <!-- Android emulator host -->
+    </domain-config>
+</network-security-config>

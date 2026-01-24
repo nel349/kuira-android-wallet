@@ -27,6 +27,7 @@ class UtxoSelectorTest {
             intentHash = "tx$value",
             outputIndex = 0,
             owner = "mn_addr_test",
+            ownerPublicKey = null,
             tokenType = tokenType,
             value = value.toString(),
             ctime = 0,

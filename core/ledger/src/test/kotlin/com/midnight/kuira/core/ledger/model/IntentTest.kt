@@ -16,6 +16,7 @@ class IntentTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(
@@ -219,6 +220,7 @@ class IntentTest {
                     outputNo = 0,
                     value = BigInteger("100"),
                     owner = "mn_addr_testnet1abc",
+                    ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
                     tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
                 )
             ),
@@ -262,6 +264,7 @@ class IntentTest {
             outputNo = 0,
             value = BigInteger("100"),
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
         val output = UtxoOutput(

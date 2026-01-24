@@ -220,13 +220,20 @@ class UnshieldedTransactionBuilder(
  * Convert UnshieldedUtxoEntity (database model) to UtxoSpend (ledger model).
  *
  * Maps database fields to transaction input fields.
+ * Requires ownerPublicKey to be set (UTXOs from our wallet must have public key).
  */
 private fun UnshieldedUtxoEntity.toUtxoSpend(): UtxoSpend {
+    val publicKey = requireNotNull(this.ownerPublicKey) {
+        "Cannot spend UTXO without public key. UTXO ${this.id} from address ${this.owner} is missing ownerPublicKey. " +
+        "This UTXO may not belong to this wallet."
+    }
+
     return UtxoSpend(
         intentHash = this.intentHash,
         outputNo = this.outputIndex,
         value = BigInteger(this.value),
         owner = this.owner,
+        ownerPublicKey = publicKey,
         tokenType = this.tokenType
     )
 }

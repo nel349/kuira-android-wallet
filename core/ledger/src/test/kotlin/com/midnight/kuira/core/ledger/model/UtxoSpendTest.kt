@@ -25,6 +25,7 @@ class UtxoSpendTest {
             outputNo = outputNo,
             value = value,
             owner = owner,
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = tokenType
         )
 
@@ -45,6 +46,7 @@ class UtxoSpendTest {
                 outputNo = 0,
                 value = BigInteger.ONE,
                 owner = "mn_addr_testnet1abc",
+                ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
                 tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
             )
         }
@@ -59,6 +61,7 @@ class UtxoSpendTest {
                 outputNo = -1,
                 value = BigInteger.ONE,
                 owner = "mn_addr_testnet1abc",
+                ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
                 tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
             )
         }
@@ -73,6 +76,7 @@ class UtxoSpendTest {
                 outputNo = 0,
                 value = BigInteger("-1"),
                 owner = "mn_addr_testnet1abc",
+                ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
                 tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
             )
         }
@@ -86,6 +90,7 @@ class UtxoSpendTest {
             outputNo = 0,
             value = BigInteger.ZERO,
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
 
@@ -102,6 +107,7 @@ class UtxoSpendTest {
                 outputNo = 0,
                 value = BigInteger.ONE,
                 owner = "",
+                ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
                 tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
             )
         }
@@ -116,6 +122,7 @@ class UtxoSpendTest {
                 outputNo = 0,
                 value = BigInteger.ONE,
                 owner = "mn_addr_testnet1abc",
+                ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
                 tokenType = "0000"  // Too short (needs 64 chars)
             )
         }
@@ -129,6 +136,7 @@ class UtxoSpendTest {
             outputNo = 5,
             value = BigInteger.ONE,
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
 
@@ -147,6 +155,7 @@ class UtxoSpendTest {
             outputNo = 0,
             value = BigInteger.ONE,
             owner = "mn_addr_testnet1abc",
+            ownerPublicKey = UtxoSpend.TEST_PUBLIC_KEY,
             tokenType = UtxoSpend.NATIVE_TOKEN_TYPE
         )
 

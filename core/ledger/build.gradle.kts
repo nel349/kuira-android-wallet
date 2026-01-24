@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -39,6 +40,16 @@ dependencies {
     // Coroutines (for suspend functions in future phases)
     implementation(libs.kotlinx.coroutines.android)
 
+    // Ktor for HTTP client (Node RPC submission - Phase 2E)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
+
+    // Kotlinx Serialization for JSON
+    implementation(libs.kotlinx.serialization.json)
+
     // Crypto module (for TransactionSigner native library)
     implementation(project(":core:crypto"))
 
@@ -49,9 +60,13 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation("io.mockk:mockk:1.13.8")  // MockK for Kotlin
+    testImplementation("io.ktor:ktor-client-mock:2.3.7")
     testImplementation(project(":core:testing"))
 
     // Android Instrumentation Testing
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.room.runtime)
+    androidTestImplementation(libs.room.ktx)
+    androidTestImplementation(project(":core:indexer"))
 }

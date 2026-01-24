@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only AndroidManifest.xml for core:ledger module
+
+  This manifest is merged with the main manifest ONLY in debug builds.
+  It enables cleartext traffic to localhost for integration testing with local Midnight node.
+
+  SECURITY: This configuration is NOT included in release builds.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Allow cleartext traffic for debug builds (testing with local node) -->
+    <application
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true" />
+
+</manifest>

@@ -10,7 +10,8 @@ import java.math.BigInteger
  * Matches Midnight SDK's `WireUtxoSchema`.
  *
  * @property value Amount in smallest unit (like satoshis)
- * @property owner Address that owns this UTXO
+ * @property owner Address that owns this UTXO (Bech32m encoded UserAddress)
+ * @property ownerPublicKey Public key of the owner (hex-encoded, 33 bytes compressed). Null if not from our wallet.
  * @property tokenType Token type identifier (e.g., "DUST")
  * @property intentHash Transaction hash that created this UTXO
  * @property outputIndex Index of this output in the transaction
@@ -21,6 +22,7 @@ import java.math.BigInteger
 data class Utxo(
     val value: String, // Serialized as string, convert to BigInteger
     val owner: String,
+    val ownerPublicKey: String? = null,
     val tokenType: String,
     val intentHash: String,
     val outputIndex: Int,

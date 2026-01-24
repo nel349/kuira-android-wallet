@@ -42,10 +42,19 @@ data class UnshieldedUtxoEntity(
     val outputIndex: Int,
 
     /**
-     * Address that owns this UTXO.
+     * Address that owns this UTXO (Bech32m encoded UserAddress).
+     * Format: mn_addr_[network]1...
      */
     @ColumnInfo(name = "owner")
     val owner: String,
+
+    /**
+     * Public key of the owner (hex-encoded compressed key, 33 bytes).
+     * Required for spending this UTXO (UtxoSpend.owner expects VerifyingKey).
+     * Null if UTXO doesn't belong to our wallet.
+     */
+    @ColumnInfo(name = "owner_public_key")
+    val ownerPublicKey: String?,
 
     /**
      * Token type (e.g., "DUST").
@@ -97,6 +106,7 @@ data class UnshieldedUtxoEntity(
                 intentHash = utxo.intentHash,
                 outputIndex = utxo.outputIndex,
                 owner = utxo.owner,
+                ownerPublicKey = utxo.ownerPublicKey,
                 tokenType = utxo.tokenType,
                 value = utxo.value,
                 ctime = utxo.ctime,
@@ -113,6 +123,7 @@ data class UnshieldedUtxoEntity(
         return Utxo(
             value = value,
             owner = owner,
+            ownerPublicKey = ownerPublicKey,
             tokenType = tokenType,
             intentHash = intentHash,
             outputIndex = outputIndex,

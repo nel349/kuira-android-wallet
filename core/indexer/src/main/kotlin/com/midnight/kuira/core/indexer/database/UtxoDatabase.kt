@@ -13,7 +13,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [UnshieldedUtxoEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class UtxoDatabase : RoomDatabase() {
@@ -46,6 +46,8 @@ abstract class UtxoDatabase : RoomDatabase() {
                 DATABASE_NAME
             )
                 .fallbackToDestructiveMigration() // TODO: Add proper migrations for production
+                .enableMultiInstanceInvalidation() // Allow multiple processes to share database
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // Enable WAL for better concurrency
                 .build()
         }
 

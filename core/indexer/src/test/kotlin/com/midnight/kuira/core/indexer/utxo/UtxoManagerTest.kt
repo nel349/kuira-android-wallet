@@ -88,7 +88,15 @@ class UtxoManagerTest {
     @Test
     fun `given transaction with only created utxos when processUpdate then only inserts`() = runBlocking {
         // Given
-        val createdUtxo = Utxo("1000", "addr", "DUST", "0x123", 0, 1, false)
+        val createdUtxo = Utxo(
+            value = "1000",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x123",
+            outputIndex = 0,
+            ctime = 1,
+            registeredForDustGeneration = false
+        )
         val transaction = UnshieldedTransaction(
             id = 100,
             hash = "0xtx",
@@ -113,7 +121,15 @@ class UtxoManagerTest {
     @Test
     fun `given transaction with only spent utxos when processUpdate then only marks spent`() = runBlocking {
         // Given
-        val spentUtxo = Utxo("1000", "addr", "DUST", "0x123", 0, 1, false)
+        val spentUtxo = Utxo(
+            value = "1000",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x123",
+            outputIndex = 0,
+            ctime = 1,
+            registeredForDustGeneration = false
+        )
         val transaction = UnshieldedTransaction(
             id = 100,
             hash = "0xtx",
@@ -183,9 +199,9 @@ class UtxoManagerTest {
         // Given
         val address = "mn_addr_testnet1abc"
         val utxos = listOf(
-            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, "DUST", "1000", 1, false, UtxoState.AVAILABLE),
-            UnshieldedUtxoEntity("0x2:0", "0x2", 0, address, "DUST", "2000", 2, false, UtxoState.AVAILABLE),
-            UnshieldedUtxoEntity("0x3:0", "0x3", 0, address, "OTHER", "5000", 3, false, UtxoState.AVAILABLE)
+            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, null, "DUST", "1000", 1, false, UtxoState.AVAILABLE),
+            UnshieldedUtxoEntity("0x2:0", "0x2", 0, address, null, "DUST", "2000", 2, false, UtxoState.AVAILABLE),
+            UnshieldedUtxoEntity("0x3:0", "0x3", 0, address, null, "OTHER", "5000", 3, false, UtxoState.AVAILABLE)
         )
         whenever(mockDao.getUnspentUtxos(address)).thenReturn(utxos)
 
@@ -216,7 +232,7 @@ class UtxoManagerTest {
         // Given
         val address = "mn_addr_testnet1abc"
         val utxos = listOf(
-            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, "DUST", "1000", 1, false, UtxoState.AVAILABLE)
+            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, null, "DUST", "1000", 1, false, UtxoState.AVAILABLE)
         )
         whenever(mockDao.observeUnspentUtxos(address)).thenReturn(flowOf(utxos))
 
@@ -233,7 +249,7 @@ class UtxoManagerTest {
         // Given
         val address = "mn_addr_testnet1abc"
         val expected = listOf(
-            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, "DUST", "1000", 1, false, UtxoState.AVAILABLE)
+            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, null, "DUST", "1000", 1, false, UtxoState.AVAILABLE)
         )
         whenever(mockDao.getUnspentUtxos(address)).thenReturn(expected)
 
@@ -261,10 +277,10 @@ class UtxoManagerTest {
         // Given
         val address = "mn_addr"
         val utxos = listOf(
-            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, "DUST", "100", 1, false, UtxoState.AVAILABLE),
-            UnshieldedUtxoEntity("0x2:0", "0x2", 0, address, "DUST", "200", 2, false, UtxoState.AVAILABLE),
-            UnshieldedUtxoEntity("0x3:0", "0x3", 0, address, "DUST", "300", 3, false, UtxoState.AVAILABLE),
-            UnshieldedUtxoEntity("0x4:0", "0x4", 0, address, "DUST", "400", 4, false, UtxoState.AVAILABLE)
+            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, null, "DUST", "100", 1, false, UtxoState.AVAILABLE),
+            UnshieldedUtxoEntity("0x2:0", "0x2", 0, address, null, "DUST", "200", 2, false, UtxoState.AVAILABLE),
+            UnshieldedUtxoEntity("0x3:0", "0x3", 0, address, null, "DUST", "300", 3, false, UtxoState.AVAILABLE),
+            UnshieldedUtxoEntity("0x4:0", "0x4", 0, address, null, "DUST", "400", 4, false, UtxoState.AVAILABLE)
         )
         whenever(mockDao.getUnspentUtxos(address)).thenReturn(utxos)
 
@@ -281,8 +297,8 @@ class UtxoManagerTest {
         val address = "mn_addr"
         val largeValue = "999999999999999999999999999999"
         val utxos = listOf(
-            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, "DUST", largeValue, 1, false, UtxoState.AVAILABLE),
-            UnshieldedUtxoEntity("0x2:0", "0x2", 0, address, "DUST", largeValue, 2, false, UtxoState.AVAILABLE)
+            UnshieldedUtxoEntity("0x1:0", "0x1", 0, address, null, "DUST", largeValue, 1, false, UtxoState.AVAILABLE),
+            UnshieldedUtxoEntity("0x2:0", "0x2", 0, address, null, "DUST", largeValue, 2, false, UtxoState.AVAILABLE)
         )
         whenever(mockDao.getUnspentUtxos(address)).thenReturn(utxos)
 
@@ -324,8 +340,24 @@ class UtxoManagerTest {
     @Test
     fun `given failed transaction with spent utxos when processUpdate then unlocks utxos`() = runBlocking {
         // Given
-        val spentUtxo1 = Utxo("1000", "addr", "DUST", "0x123", 0, 1, false)
-        val spentUtxo2 = Utxo("2000", "addr", "DUST", "0x456", 0, 2, false)
+        val spentUtxo1 = Utxo(
+            value = "1000",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x123",
+            outputIndex = 0,
+            ctime = 1,
+            registeredForDustGeneration = false
+        )
+        val spentUtxo2 = Utxo(
+            value = "2000",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x456",
+            outputIndex = 0,
+            ctime = 2,
+            registeredForDustGeneration = false
+        )
         val transaction = UnshieldedTransaction(
             id = 100,
             hash = "0xtx",
@@ -362,7 +394,15 @@ class UtxoManagerTest {
     @Test
     fun `given failed transaction with created utxos when processUpdate then does not insert`() = runBlocking {
         // Given
-        val createdUtxo = Utxo("1000", "addr", "DUST", "0x123", 0, 1, false)
+        val createdUtxo = Utxo(
+            value = "1000",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x123",
+            outputIndex = 0,
+            ctime = 1,
+            registeredForDustGeneration = false
+        )
         val transaction = UnshieldedTransaction(
             id = 100,
             hash = "0xtx",
@@ -397,8 +437,24 @@ class UtxoManagerTest {
     @Test
     fun `given partial success transaction when processUpdate then marks as spent`() = runBlocking {
         // Given
-        val createdUtxo = Utxo("1000", "addr", "DUST", "0x123", 0, 1, false)
-        val spentUtxo = Utxo("500", "addr", "DUST", "0x456", 0, 2, false)
+        val createdUtxo = Utxo(
+            value = "1000",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x123",
+            outputIndex = 0,
+            ctime = 1,
+            registeredForDustGeneration = false
+        )
+        val spentUtxo = Utxo(
+            value = "500",
+            owner = "addr",
+            tokenType = "DUST",
+            intentHash = "0x456",
+            outputIndex = 0,
+            ctime = 2,
+            registeredForDustGeneration = false
+        )
         val transaction = UnshieldedTransaction(
             id = 100,
             hash = "0xtx",

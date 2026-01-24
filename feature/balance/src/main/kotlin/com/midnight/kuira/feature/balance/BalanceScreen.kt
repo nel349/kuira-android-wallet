@@ -71,8 +71,10 @@ fun BalanceScreen(
     val syncState by viewModel.syncState.collectAsState()
 
     // Hardcoded default address (editable)
+    // This is derived from: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    // at path m/44'/2400'/0'/0/0
     var address by remember {
-        mutableStateOf("mn_addr_undeployed1gkasr3z3vwyscy2jpp53nzr37v7n4r3lsfgj6v5g584dakjzt0xqun4d4r")
+        mutableStateOf("mn_addr_undeployed1fxqvl2mzlx07hv0vwttjq7ff3jeg7507glau9ge384jp5x0nyykstn9hzv")
     }
 
     // Load balances on first launch

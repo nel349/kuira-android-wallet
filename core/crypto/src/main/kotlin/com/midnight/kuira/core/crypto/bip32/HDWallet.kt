@@ -370,8 +370,20 @@ class HDWalletRole internal constructor(
             org.bitcoinj.crypto.ChildNumber(index, false)
         ) ?: throw IllegalStateException("Failed to derive key at index $index")
 
+        // Ensure key has private key material (not a watch-only key)
+        val privateKeyBytes = key.privKeyBytes
+            ?: throw IllegalStateException(
+                "Derived key at path m/44'/2400'/$accountIndex'/${role.index}/$index " +
+                        "does not have private key material. This should never happen for keys " +
+                        "derived from a seed."
+            )
+
+        require(privateKeyBytes.size == 32) {
+            "Private key must be 32 bytes, got ${privateKeyBytes.size} bytes"
+        }
+
         val derivedKey = DerivedKey(
-            privateKeyBytes = key.privKeyBytes,
+            privateKeyBytes = privateKeyBytes,
             publicKeyBytes = key.pubKey,
             chainCode = key.chainCode,
             path = "m/44'/2400'/$accountIndex'/${role.index}/$index",
