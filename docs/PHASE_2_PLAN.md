@@ -1,9 +1,26 @@
 # Phase 2: Unshielded Transactions - Implementation Plan
 
 **Goal:** Enable users to send transparent (non-private) tokens from Kuira wallet
-**Duration:** 22-30 hours estimated (revised after investigation)
-**Status:** 🟢 **IN PROGRESS** - Phase 2A+2B+2C+2D-FFI Complete (37h/22-30h, 83%)
-**Last Updated:** January 22, 2026
+**Duration:** 62-78 hours estimated (revised with mandatory dust wallet)
+**Status:** 🔴 **BLOCKED** - Phase 2-DUST Required (37h/62-78h, 62%)
+**Last Updated:** January 24, 2026
+
+---
+
+## 🔴 CRITICAL BLOCKER: Dust Wallet Required
+
+**Discovery Date:** January 24, 2026
+
+ALL Midnight transactions require dust to pay fees. Cannot proceed with Phase 2E (Submission) or 2F (Send UI) without implementing Phase 2-DUST first.
+
+**Root Cause:** "Invalid Transaction - Custom error: 1" = Missing dust fee payment
+**Investigation:** `/Users/norman/Development/midnight/kuira-verification-test/ROOT_CAUSE_DUST_FEE_REQUIRED.md`
+**Implementation Plan:** `docs/PHASE_2_DUST_PLAN.md` (30-40h detailed breakdown)
+
+**Impact:**
+- ❌ Phase 2E blocked - Node rejects transactions without dust
+- ❌ Phase 2F blocked - UI cannot submit without dust
+- ✅ Phase 2-DUST must be implemented NEXT
 
 ---
 

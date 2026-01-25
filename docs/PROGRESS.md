@@ -1,9 +1,9 @@
 # Kuira Wallet - Progress Tracker
 
-**Last Updated:** January 22, 2026
-**Current Phase:** Phase 2 (Unshielded Transactions) - Phase 2D-FFI Complete (83%)
-**Hours Invested:** 122.5h / ~120h estimated
-**Completion:** ~102% (ahead of original estimate)
+**Last Updated:** January 24, 2026
+**Current Phase:** Phase 2 (Unshielded Transactions) - Phase 2-DUST Required (62%)
+**Hours Invested:** 122.5h / ~160h estimated (revised with dust requirement)
+**Completion:** ~77% (revised estimate includes mandatory dust wallet)
 
 ---
 
@@ -20,18 +20,123 @@
 | ↳ 4B-2: UTXO Database | ✅ Complete | ~10h | 2.5h | 100% |
 | ↳ 4B-3: Balance Repository | ✅ Complete | ~3h | 6h | 100% |
 | ↳ 4B-4: UI Integration | ✅ Complete | ~5-8h | 7h | 100% |
-| **Phase 2: Unshielded Transactions** | 🔄 **In Progress** | 22-30h | 37h | 83% |
+| **Phase 2: Unshielded Transactions** | 🔄 **In Progress** | 62-78h | 37h | 62% |
 | ↳ 2A: Transaction Models | ✅ Complete | 2-3h | 3h | 100% |
 | ↳ 2B: UTXO Manager | ✅ Complete | 2-3h | 3.5h | 100% |
 | ↳ 2C: Transaction Builder | ✅ Complete | 3-4h | 1.5h | 100% |
 | ↳ 2D-FFI: JNI Ledger Wrapper | ✅ Complete | 8-10h | 29h | 100% |
-| ↳ 2E: Submission Layer | ⏸️ Not Started | 2-3h | 0h | 0% |
-| ↳ 2F: Send UI | ⏸️ Not Started | 3-4h | 0h | 0% |
+| ↳ **2-DUST: Dust Wallet** | 🔴 **CRITICAL** | **30-40h** | **0h** | **0%** |
+| ↳ 2E: Submission Layer | ⏸️ Blocked | 2-3h | 0h | 0% |
+| ↳ 2F: Send UI | ⏸️ Blocked | 3-4h | 0h | 0% |
 | **Phase 3: Shielded Transactions** | ⏸️ Not Started | 20-25h | 0h | 0% |
 | **Phase 5: DApp Connector** | ⏸️ Not Started | 15-20h | 0h | 0% |
 | **Phase 6: UI & Polish** | ⏸️ Not Started | 15-20h | 0h | 0% |
 
-**Next Milestone:** Unshielded transaction sending (17-23h for Phase 2)
+**Next Milestone:** Dust Wallet implementation (30-40h for Phase 2-DUST - CRITICAL BLOCKER)
+
+---
+
+## 🔴 CRITICAL DISCOVERY: Phase 2-DUST Required (January 24, 2026)
+
+**Status:** 🔴 **BLOCKER** - Phase 2E/2F cannot proceed without dust wallet
+**Investigation Time:** 8 hours (testing + investigation + planning)
+**Document:** `docs/PHASE_2_DUST_PLAN.md`
+
+### Root Cause Analysis
+
+**Problem:** Both Android and TypeScript SDK transactions failing with "Invalid Transaction - Custom error: 1"
+
+**Investigation Process:**
+1. ✅ Verified sealed transaction format correct (`pedersen-schnorr[v1]`)
+2. ✅ Tested TypeScript SDK - same error (proves not Android-specific)
+3. ✅ Compared with working `fund-unshielded.ts` script
+4. ✅ Found critical difference: Dust fee payment
+
+**Discovery:**
+```typescript
+// From midnight-wallet/packages/dust-wallet/src/Transacting.ts:306-312
+if (!selectedTokens.length) {
+  return Either.left(new WalletError.TransactingError({
+    message: 'No dust tokens found in the wallet state'  // ← ROOT CAUSE!
+  }));
+}
+
+if (feeDiff < 0n) {
+  return Either.left(new WalletError.TransactingError({
+    message: 'Not enough Dust generated to pay the fee'
+  }));
+}
+```
+
+### Impact
+
+**ALL Midnight transactions require dust to pay fees:**
+- ❌ Cannot submit unshielded transactions without dust
+- ❌ Node rejects with cryptic "Custom error: 1" if no dust
+- ✅ Working `fund-unshielded.ts` script has dust registration + fee payment
+
+**Transaction Structure Comparison:**
+
+**❌ Our Android TX (FAILS):**
+```kotlin
+Intent {
+  guaranteed_unshielded_offer: Some(UnshieldedOffer { ... }),
+  dustActions: None,  // ❌ MISSING - Node rejects!
+}
+```
+
+**✅ Working TypeScript TX (SUCCEEDS):**
+```kotlin
+Intent {
+  guaranteed_unshielded_offer: Some(UnshieldedOffer { ... }),
+  dustActions: Some(DustActions {  // ✅ Required for fees!
+    spends: [DustSpend { ... }],
+  }),
+}
+```
+
+### Required Implementation
+
+**Phase 2-DUST Components:**
+1. **2D-1:** Dust Key Derivation (3-4h) - BIP-44 path m/44'/2400'/0'/2/0
+2. **2D-2:** Dust FFI Bridge (8-10h) - JNI to midnight-ledger dust functions
+3. **2D-3:** Dust State Management (6-8h) - Track UTXOs, calculate balance
+4. **2D-4:** UTXO Registration (5-6h) - Register Night UTXOs for dust generation
+5. **2D-5:** Fee Calculation (4-5h) - Calculate fees, select coins
+6. **2D-6:** Add Fee Payment (4-5h) - Build DustActions, add to Intent
+
+**Total:** 30-40 hours
+
+**Detailed Plan:** See `docs/PHASE_2_DUST_PLAN.md`
+
+### Revised Timeline
+
+**Original Phase 2 Estimate:** 22-30h
+**Actual Phase 2 with Dust:** 62-78h (190% increase)
+
+**Phase 2 Breakdown:**
+- ✅ Phase 2A-D-FFI: 37h complete (signing infrastructure)
+- 🔴 Phase 2-DUST: 30-40h required (fee payment infrastructure)
+- ⏸️ Phase 2E: 2-3h blocked (submission)
+- ⏸️ Phase 2F: 3-4h blocked (UI)
+
+**Why the Increase:**
+- Dust was completely unknown requirement
+- Not mentioned in initial Phase 2 plan
+- Discovered through live testing with actual node
+- Critical for ALL transactions (not optional)
+
+### Next Steps
+
+1. ✅ Document root cause - COMPLETE (`ROOT_CAUSE_DUST_FEE_REQUIRED.md`)
+2. ✅ Create implementation plan - COMPLETE (`PHASE_2_DUST_PLAN.md`)
+3. ⏸️ Start Phase 2D-1 (Dust Key Derivation) - NEXT
+4. ⏸️ Implement remaining dust components sequentially
+5. ⏸️ Integrate with Phase 2E/2F once dust complete
+
+**Investigation Documents:**
+- `/Users/norman/Development/midnight/kuira-verification-test/ROOT_CAUSE_DUST_FEE_REQUIRED.md`
+- `docs/PHASE_2_DUST_PLAN.md`
 
 ---
 
