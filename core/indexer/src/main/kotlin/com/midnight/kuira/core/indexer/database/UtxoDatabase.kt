@@ -8,12 +8,15 @@ import androidx.room.RoomDatabase
 /**
  * Room database for UTXO storage.
  *
- * Stores unshielded UTXOs for local balance calculation.
+ * Stores unshielded UTXOs and dust tokens for local balance calculation.
  * Eventually will also store shielded UTXOs (future).
  */
 @Database(
-    entities = [UnshieldedUtxoEntity::class],
-    version = 3,
+    entities = [
+        UnshieldedUtxoEntity::class,
+        DustTokenEntity::class
+    ],
+    version = 4,  // Bumped from 3 to 4 to add dust_tokens table
     exportSchema = false
 )
 abstract class UtxoDatabase : RoomDatabase() {
@@ -21,6 +24,11 @@ abstract class UtxoDatabase : RoomDatabase() {
      * DAO for unshielded UTXO operations.
      */
     abstract fun unshieldedUtxoDao(): UnshieldedUtxoDao
+
+    /**
+     * DAO for dust token operations.
+     */
+    abstract fun dustDao(): DustDao
 
     companion object {
         private const val DATABASE_NAME = "kuira-utxo-database"

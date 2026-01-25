@@ -1,5 +1,6 @@
 package com.midnight.kuira.core.indexer.repository
 
+import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.TokenBalance
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import kotlinx.coroutines.flow.first
@@ -27,6 +28,7 @@ import java.math.BigInteger
 class BalanceRepositoryTest {
 
     private lateinit var utxoManager: UtxoManager
+    private lateinit var indexerClient: IndexerClient
     private lateinit var repository: BalanceRepository
 
     private val testAddress = "mn_addr_testnet1test123"
@@ -34,7 +36,8 @@ class BalanceRepositoryTest {
     @Before
     fun setup() {
         utxoManager = mock()
-        repository = BalanceRepository(utxoManager)
+        indexerClient = mock()
+        repository = BalanceRepository(utxoManager, indexerClient)
     }
 
     // ==================== Transform Balances ====================

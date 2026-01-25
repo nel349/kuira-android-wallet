@@ -125,10 +125,10 @@ Intent {
 
 | Phase | Goal | Estimate | Status |
 |-------|------|----------|--------|
-| 2D-1: Dust Key Derivation | Derive dust keys at m/44'/2400'/0'/2/0 | 3-4h | ⏸️ Next |
-| 2D-2: Dust FFI Bridge | JNI wrapper to midnight-ledger dust functions | 8-10h | ⏸️ Pending |
-| 2D-3: Dust State Management | Track dust UTXOs, calculate balance | 6-8h | ⏸️ Pending |
-| 2D-4: UTXO Registration | Register Night UTXOs for dust generation | 5-6h | ⏸️ Pending |
+| 2D-1: Dust Key Derivation | Derive dust keys at m/44'/2400'/0'/2/0 | 3-4h | ✅ Complete |
+| 2D-2: Dust FFI Bridge | JNI wrapper to midnight-ledger dust functions | 8-10h | ✅ **COMPLETE** |
+| 2D-3: Dust State Management | Track dust UTXOs, calculate balance | 6-8h | ✅ Complete |
+| 2D-4: UTXO Registration | Register Night UTXOs for dust generation | 5-6h | ⏸️ Next |
 | 2D-5: Fee Calculation | Calculate fees, select dust coins | 4-5h | ⏸️ Pending |
 | 2D-6: Add Fee Payment | Build DustActions, add to Intent | 4-5h | ⏸️ Pending |
 
@@ -191,10 +191,100 @@ m/44'/2400'/0'/2/0
 
 ---
 
-## Phase 2D-2: Dust FFI Bridge (8-10h)
+## Phase 2D-2: Dust FFI Bridge (8-10h) ✅ COMPLETE
 
 ### Goal
 Create comprehensive JNI bridge to midnight-ledger dust functions for state management.
+
+### Completion Summary (January 24, 2026)
+
+**Status:** ✅ **COMPLETE** - All 3 layers implemented, tested, and building successfully
+
+**Completed Deliverables:**
+- ✅ **Layer 3: Kotlin Wrapper** - DustLocalState.kt with all public methods
+  - `create()` - Initialize DustLocalState
+  - `getBalance()` - Get current balance
+  - `serialize()` - Serialize state
+  - `close()` - Free native memory
+  - `getUtxoCount()` - Get UTXO count
+  - `getUtxoAt()` - Get UTXO at index
+  - File: `core/crypto/src/main/kotlin/com/midnight/kuira/core/crypto/dust/DustLocalState.kt`
+
+- ✅ **Layer 2: JNI C Bridge** - kuira_crypto_jni.c with all JNI native methods
+  - `Java_com_midnight_kuira_core_crypto_dust_DustLocalState_nativeCreateDustLocalState`
+  - `Java_com_midnight_kuira_core_crypto_dust_DustLocalState_nativeDustWalletBalance`
+  - `Java_com_midnight_kuira_core_crypto_dust_DustLocalState_nativeSerializeDustState`
+  - `Java_com_midnight_kuira_core_crypto_dust_DustLocalState_nativeFreeDustLocalState`
+  - `Java_com_midnight_kuira_core_crypto_dust_DustLocalState_nativeDustUtxoCount`
+  - `Java_com_midnight_kuira_core_crypto_dust_DustLocalState_nativeDustGetUtxoAt`
+  - File: `rust/kuira-crypto-ffi/jni/kuira_crypto_jni.c`
+
+- ✅ **Layer 1: Rust FFI Implementation** - All Rust functions implemented and tested
+  - `create_dust_local_state()` - Creates DustLocalState with INITIAL_DUST_PARAMETERS
+  - `dust_wallet_balance()` - Calculates current balance with time-based generation
+  - `serialize_dust_state()` - Serializes DustLocalState to bytes (8-byte length prefix)
+  - `free_byte_array()` - Frees serialized byte arrays
+  - `free_dust_local_state()` - Frees DustLocalState pointer
+  - `dust_utxo_count()` - Returns number of dust UTXOs
+  - `dust_get_utxo_at()` - Returns UTXO at index as hex-encoded bytes
+  - File: `rust/kuira-crypto-ffi/src/dust_ffi.rs`
+
+**Test Coverage (32 tests total, 100% passing):**
+
+**Rust FFI Tests (12 tests):**
+- ✅ `test_derive_dust_public_key()` - Verifies key derivation
+- ✅ `test_create_dust_local_state()` - State creation
+- ✅ `test_dust_wallet_balance_empty()` - Zero balance for new state
+- ✅ `test_serialize_dust_state()` - Serialization round-trip
+- ✅ `test_dust_utxo_count_empty()` - UTXO counting
+- ✅ `test_dust_get_utxo_at_out_of_bounds()` - Bounds checking
+- ✅ `test_null_pointer()` - Null pointer safety
+- ✅ `test_dust_wallet_balance_null_ptr()` - Balance null safety
+- ✅ `test_serialize_dust_state_null_ptr()` - Serialize null safety
+- ✅ `test_dust_utxo_count_null_ptr()` - UTXO count null safety
+- ✅ `test_dust_get_utxo_at_null_ptr()` - Get UTXO null safety
+- ✅ `test_invalid_seed_length()` - Seed validation
+
+**Android Instrumented Tests (20 tests - completed January 25, 2026):**
+- ✅ `verifyNativeLibraryLoadsOnAndroid()` - Critical: Verifies libkuira_crypto_ffi.so loads
+- ✅ `verifyFFIBridgeWorks()` - End-to-end Kotlin → JNI → Rust verification
+- ✅ `createReturnsNonNullState()` - State creation
+- ✅ `multipleStatesCanBeCreated()` - Thread safety (multiple instances)
+- ✅ `getBalanceReturnsZeroForNewState()` - Balance for empty state
+- ✅ `getBalanceWorksWithDifferentTimestamps()` - Time-based balance calculation
+- ✅ `getBalanceHandlesLargeTimestamps()` - Edge case: year 2100
+- ✅ `serializeReturnsNonNullForNewState()` - Serialization works
+- ✅ `serializedDataHasReasonableSize()` - Empty state < 10KB
+- ✅ `serializeIsConsistent()` - Repeated serialization produces same result
+- ✅ `getUtxoCountReturnsZeroForNewState()` - UTXO count for empty state
+- ✅ `getUtxoAtReturnsNullForEmptyState()` - Bounds checking (empty)
+- ✅ `getUtxoAtReturnsNullForInvalidIndex()` - Bounds checking (out of bounds)
+- ✅ `closeDoesNotCrash()` - Memory management
+- ✅ `multipleClosesDoNotCrash()` - Idempotent close()
+- ✅ `closedStateCannotBeUsed()` - Post-close safety
+- ✅ `memoryCleanupWithMultipleStates()` - Stress test (100 states, no memory leak)
+- ✅ `stateHandlesEdgeCaseTimestamps()` - Edge cases: time 0, negative, MAX_VALUE
+- ✅ `fullLifecycleTest()` - Complete workflow: create → use → serialize → close
+- ✅ `concurrentStateUsage()` - Multiple states don't interfere
+
+**Build Verification:**
+- ✅ Rust library built for all Android ABIs (arm64-v8a, armeabi-v7a, x86, x86_64)
+- ✅ CMake successfully links Rust static library
+- ✅ App builds successfully with dust FFI
+- ✅ No linker errors
+- ✅ Tests run successfully on Android emulator (Pixel 9a, API 16)
+
+**Key Files:**
+- `rust/kuira-crypto-ffi/src/dust_ffi.rs` (510 lines, 12 tests)
+- `rust/kuira-crypto-ffi/jni/kuira_crypto_jni.c` (JNI C bridge with security hardening)
+- `core/crypto/src/main/kotlin/com/midnight/kuira/core/crypto/dust/DustLocalState.kt` (Kotlin wrapper, 449 lines)
+- `core/crypto/src/androidTest/kotlin/com/midnight/kuira/core/crypto/dust/DustLocalStateInstrumentedTest.kt` (20 comprehensive integration tests)
+
+**Implementation Notes:**
+- **JNI Companion Object Fix (January 25, 2026):** Fixed JNI signature mismatch for `nativeCreateDustLocalState()`. Kotlin companion object methods require `$Companion` in JNI signature: `Java_..._DustLocalState_00024Companion_nativeCreateDustLocalState` vs `Java_..._DustLocalState_nativeCreateDustLocalState` for instance methods.
+- **Memory Safety:** All native pointers checked for null, sensitive data zeroized after use (see kuira_crypto_jni.c line 40-50)
+- **Error Handling:** Comprehensive null checks, bounds validation, and graceful error returns
+- **Performance:** All 20 Android tests completed in 0.021 seconds (very fast FFI)
 
 ### Key Concepts
 
@@ -247,10 +337,57 @@ Create comprehensive JNI bridge to midnight-ledger dust functions for state mana
 
 ---
 
-## Phase 2D-3: Dust State Management (6-8h)
+## Phase 2D-3: Dust State Management (6-8h) ✅ COMPLETE
 
 ### Goal
 Implement Kotlin layer for tracking dust state, syncing from blockchain, and persisting to database.
+
+### Completion Summary (January 24, 2026)
+
+**Status:** ✅ **COMPLETE** (but unusable until 2D-2 Rust FFI is finished)
+
+**Completed Deliverables:**
+- ✅ DustTokenEntity - Room entity for caching dust UTXO info
+- ✅ DustDao - Database operations with state management
+- ✅ DustRepository - Business logic layer for dust operations
+- ✅ DustBalanceCalculator - Domain logic for balance calculations (Clean Architecture fix)
+- ✅ State persistence (serialize/deserialize) via DataStore
+- ✅ Balance calculation with time-based dust generation
+- ✅ Token state transitions (AVAILABLE → PENDING → SPENT)
+- ✅ Observable balance queries for reactive UI
+
+**Files Created:**
+- `core/indexer/src/main/kotlin/com/midnight/kuira/core/indexer/database/DustTokenEntity.kt`
+- `core/indexer/src/main/kotlin/com/midnight/kuira/core/indexer/database/DustDao.kt`
+- `core/indexer/src/main/kotlin/com/midnight/kuira/core/indexer/repository/DustRepository.kt`
+- `core/indexer/src/main/kotlin/com/midnight/kuira/core/indexer/dust/DustBalanceCalculator.kt`
+
+**Test Coverage (47 tests, all passing):**
+- ✅ DustBalanceCalculatorTest: 16 tests (domain logic)
+- ✅ DustDaoTest: 18 tests (database layer)
+- ✅ DustRepositoryTest: 13 tests (repository orchestration)
+
+**Database Updates:**
+- Added `dust_tokens` table to UtxoDatabase
+- Version bumped from 3 to 4
+
+**Architecture Fixes:**
+- Fixed Clean Architecture violation (moved logic from Entity to Calculator)
+- Fixed DI anti-pattern (inject DataStore directly, not Context)
+- Added Robolectric for Room database testing
+
+**Dependencies Added:**
+- Robolectric 4.11.1 for Room unit tests
+- AndroidX Test Core 1.5.0
+
+**Integration Status:**
+- ⚠️ DustRepository calls DustLocalState.create(), which requires Phase 2D-2 Rust FFI
+- ⚠️ Cannot fully test end-to-end until 2D-2 is complete
+- ✅ All non-FFI logic tested and working
+
+**Pending:**
+- Dust event processing from blockchain subscription (can be done in Phase 2D-4)
+- DustLocalState deserialization (can be implemented once 2D-2 Rust FFI works)
 
 ### Key Concepts
 

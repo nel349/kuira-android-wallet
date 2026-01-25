@@ -37,11 +37,15 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true // Mock android.util.Log and other Android APIs
+            isIncludeAndroidResources = true // Enable Robolectric
         }
     }
 }
 
 dependencies {
+    // Core modules
+    implementation(project(":core:crypto"))
+
     // Core Android
     implementation(libs.androidx.core.ktx)
 
@@ -83,6 +87,10 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.8")  // MockK for Kotlin
     testImplementation("io.ktor:ktor-client-mock:2.3.7")
     testImplementation(project(":core:testing"))
+
+    // Robolectric for Room database tests
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("androidx.test:core:1.5.0")
 
     // Android Instrumentation Testing
     androidTestImplementation(libs.androidx.junit)

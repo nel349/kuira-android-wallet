@@ -1,6 +1,9 @@
 package com.midnight.kuira.core.indexer.di
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.api.IndexerClientImpl
@@ -14,7 +17,21 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Qualifier
 import javax.inject.Singleton
+
+/**
+ * Qualifier for dust state DataStore.
+ * Distinguishes it from other DataStore instances.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class DustStateDataStore
+
+// Extension property for creating DataStore
+private val Context.dustStateDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "dust_state"
+)
 
 /**
  * Hilt module for Indexer component dependencies.
@@ -112,6 +129,22 @@ object IndexerModule {
         @ApplicationContext context: Context
     ): SyncStateManager {
         return SyncStateManager(context)
+    }
+
+    /**
+     * Provide DataStore for dust state persistence.
+     *
+     * **Singleton Scope:** Shared DataStore instance for all dust state operations.
+     *
+     * **Qualifier:** @DustStateDataStore distinguishes from other DataStore instances.
+     */
+    @Provides
+    @Singleton
+    @DustStateDataStore
+    fun provideDustStateDataStore(
+        @ApplicationContext context: Context
+    ): DataStore<Preferences> {
+        return context.dustStateDataStore
     }
 
     /**
