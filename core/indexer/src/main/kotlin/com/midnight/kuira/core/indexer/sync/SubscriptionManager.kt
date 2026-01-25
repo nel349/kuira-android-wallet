@@ -5,12 +5,15 @@ import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.launch
 import java.io.IOException
 import kotlin.math.min
 import kotlin.math.pow
@@ -62,6 +65,10 @@ class SubscriptionManager(
         // Throttle DataStore writes to reduce battery drain and disk I/O
         // Only save progress if this many milliseconds have passed since last save
         private const val PROGRESS_SAVE_THROTTLE_MS = 5000L // 5 seconds
+
+        // Auto-sync timeout: If no new transactions arrive for this duration,
+        // assume we're synced (don't wait for server's slow Progress updates)
+        private const val SYNC_TIMEOUT_MS = 5000L // 5 seconds
     }
 
     // Track last save time per address for throttling
@@ -122,14 +129,15 @@ class SubscriptionManager(
             }
     }
 
-    private fun createSubscriptionFlow(address: String): Flow<SyncState> = flow {
+    private fun createSubscriptionFlow(address: String): Flow<SyncState> = channelFlow {
         var processedCount = 0
         var latestTransactionId: Int? = null // Track latest for final save
+        var syncTimeoutJob: Job? = null // Job for auto-sync timeout
 
         // Get resume point before starting subscription
         val lastId = syncStateManager.getLastProcessedTransactionId(address)
         Log.d(TAG, "Starting subscription for $address from transaction ID: $lastId")
-        emit(SyncState.Connecting)
+        send(SyncState.Connecting)
 
         try {
             // Collect from subscription and map to sync states
@@ -143,9 +151,11 @@ class SubscriptionManager(
                     } else {
                         Log.e(TAG, "Subscription completed with error", error)
                     }
+                    syncTimeoutJob?.cancel() // Clean up timeout job
                 }
                 .catch { error ->
                     Log.e(TAG, "Error in subscription", error)
+                    syncTimeoutJob?.cancel() // Clean up timeout job
                     throw error // Re-throw for retryWhen to handle
                 }
                 .collect { update ->
@@ -155,10 +165,23 @@ class SubscriptionManager(
                 when (result) {
                     is UtxoManager.ProcessingResult.TransactionProcessed -> {
                         processedCount++
+                        latestTransactionId = result.transactionId
                         Log.d(TAG, "Processed tx ${result.transactionHash}: " +
                                 "+${result.createdCount} -${result.spentCount} (${result.status})")
+
                         // Emit syncing state
-                        emit(SyncState.Syncing(processedCount, result.transactionId))
+                        send(SyncState.Syncing(processedCount, result.transactionId))
+
+                        // Cancel previous timeout job (new transaction arrived)
+                        syncTimeoutJob?.cancel()
+
+                        // Start new timeout: if no transactions arrive for SYNC_TIMEOUT_MS,
+                        // assume we're synced (don't wait for server's slow Progress updates)
+                        syncTimeoutJob = launch {
+                            delay(SYNC_TIMEOUT_MS)
+                            Log.d(TAG, "No new transactions for ${SYNC_TIMEOUT_MS}ms, marking as synced")
+                            send(SyncState.Synced(result.transactionId))
+                        }
                     }
                     is UtxoManager.ProcessingResult.ProgressUpdate -> {
                         // Track latest transaction ID for final save
@@ -178,14 +201,15 @@ class SubscriptionManager(
                         }
 
                         // Emit Synced state when Progress update received
-                        // Note: Due to out-of-order message delivery, some transactions
-                        // may arrive after this Progress update. The UI will update
-                        // automatically when those transactions are processed (Room Flow).
-                        emit(SyncState.Synced(result.highestTransactionId))
+                        // (This is backup in case timeout didn't fire)
+                        send(SyncState.Synced(result.highestTransactionId))
                     }
                 }
             }
         } finally {
+            // Clean up timeout job
+            syncTimeoutJob?.cancel()
+
             // Save final progress on completion/cancellation (if we have any)
             latestTransactionId?.let { txId ->
                 syncStateManager.saveLastProcessedTransactionId(address, txId)
