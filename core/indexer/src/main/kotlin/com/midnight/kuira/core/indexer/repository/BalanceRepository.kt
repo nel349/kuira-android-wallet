@@ -38,7 +38,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class BalanceRepository @Inject constructor(
-    private val utxoManager: UtxoManager
+    private val utxoManager: UtxoManager,
+    private val indexerClient: com.midnight.kuira.core.indexer.api.IndexerClient
 ) {
 
     /**
@@ -144,5 +145,15 @@ class BalanceRepository @Inject constructor(
             // Total = available + pending (matches Midnight SDK)
             availableTotal.add(pendingTotal)
         }
+    }
+
+    /**
+     * Reset the WebSocket connection to the indexer.
+     *
+     * Use this when switching addresses to clean up old subscriptions
+     * and prevent subscription buildup.
+     */
+    suspend fun resetConnection() {
+        indexerClient.resetConnection()
     }
 }

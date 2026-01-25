@@ -12,6 +12,7 @@ import com.midnight.kuira.core.indexer.ui.BalanceFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,10 +101,14 @@ class BalanceViewModel @RequiresApi(Build.VERSION_CODES.O)
     @RequiresApi(Build.VERSION_CODES.O)
     @OptIn(ExperimentalCoroutinesApi::class)
     fun loadBalances(address: String) {
-        // Validate address format
-        require(address.isNotBlank()) { "Address cannot be blank" }
-        require(address.startsWith("mn_")) {
-            "Invalid Midnight address format. Must start with 'mn_'"
+        // Validate address format - show error instead of crashing
+        if (address.isBlank()) {
+            _balanceState.value = BalanceUiState.Error("Address cannot be blank")
+            return
+        }
+        if (!address.startsWith("mn_")) {
+            _balanceState.value = BalanceUiState.Error("Invalid Midnight address format. Must start with 'mn_'")
+            return
         }
 
         // Cancel previous collection to prevent memory leaks
@@ -173,24 +178,37 @@ class BalanceViewModel @RequiresApi(Build.VERSION_CODES.O)
      * Sync states are emitted to syncState flow for UI to show progress.
      */
     private fun startSync(address: String) {
-        // Cancel previous sync
-        syncJob?.cancel()
+        // Cancel previous sync and wait for it to complete
+        // CRITICAL: Must wait for full cancellation to prevent race conditions
+        viewModelScope.launch {
+            // Wait for previous job to finish cancelling
+            syncJob?.cancelAndJoin()
 
-        syncJob = viewModelScope.launch {
-            // Create subscription manager for this address
-            val subscriptionManager = subscriptionManagerFactory.create()
+            // Reset WebSocket connection to clean up old subscriptions
+            // This prevents subscription buildup when switching addresses
+            try {
+                repository.resetConnection()
+            } catch (e: Exception) {
+                // Ignore errors - connection might already be closed
+            }
 
-            // Start subscription and collect sync states
-            subscriptionManager.startSubscription(address)
-                .catch { error ->
-                    // Emit error state
-                    _syncState.value = SyncState.Error(
-                        error.message ?: "Failed to sync"
-                    )
-                }
-                .collect { state ->
-                    _syncState.value = state
-                }
+            // Now start new sync job
+            syncJob = launch {
+                // Create subscription manager for this address
+                val subscriptionManager = subscriptionManagerFactory.create()
+
+                // Start subscription and collect sync states
+                subscriptionManager.startSubscription(address)
+                    .catch { error ->
+                        // Emit error state
+                        _syncState.value = SyncState.Error(
+                            error.message ?: "Failed to sync"
+                        )
+                    }
+                    .collect { state ->
+                        _syncState.value = state
+                    }
+            }
         }
         // Note: Subscription cleanup is automatic when Job is cancelled
     }

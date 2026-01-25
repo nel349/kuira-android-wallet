@@ -270,7 +270,13 @@ class GraphQLWebSocketClient(
     private suspend fun handleMessage(message: GraphQLWebSocketMessage) {
         when (message) {
             is GraphQLWebSocketMessage.Next -> {
-                activeSubscriptions[message.id]?.send(message.payload)
+                val channel = activeSubscriptions[message.id]
+                if (channel != null) {
+                    android.util.Log.d("GraphQLWebSocket", "Sending payload to channel for ${message.id}")
+                    channel.send(message.payload)
+                } else {
+                    android.util.Log.w("GraphQLWebSocket", "No active subscription found for ${message.id}")
+                }
             }
             is GraphQLWebSocketMessage.Error -> {
                 val error = WebSocketSubscriptionException(

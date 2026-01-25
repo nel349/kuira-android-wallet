@@ -70,17 +70,12 @@ fun BalanceScreen(
     val balanceState by viewModel.balanceState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
 
-    // Hardcoded default address (editable)
-    // This is derived from: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-    // at path m/44'/2400'/0'/0/0
+    // Address input state - starts empty, user provides their own address
     var address by remember {
-        mutableStateOf("mn_addr_undeployed1fxqvl2mzlx07hv0vwttjq7ff3jeg7507glau9ge384jp5x0nyykstn9hzv")
+        mutableStateOf("")
     }
 
-    // Load balances on first launch
-    LaunchedEffect(Unit) {
-        viewModel.loadBalances(address)
-    }
+    // Don't auto-load on launch - user must enter address and click refresh
 
     val context = LocalContext.current
     val pullToRefreshState = rememberPullToRefreshState()
@@ -115,9 +110,15 @@ fun BalanceScreen(
                 // Address Input Section
                 AddressInputSection(
                     address = address,
-                    onAddressChange = { address = it },
+                    onAddressChange = { newAddress ->
+                        // Fix: Ensure clean replacement, not concatenation
+                        android.util.Log.d("BalanceScreen", "Address changed: '${newAddress}'")
+                        address = newAddress.trim()
+                    },
                     onLoadBalances = { viewModel.loadBalances(address) },
-                    onCopyAddress = { copyToClipboard(context, address) }
+                    onCopyAddress = { copyToClipboard(context, address) },
+                    onClearAddress = { address = "" },
+                    isAddressValid = address.isNotBlank() && address.startsWith("mn_")
                 )
 
                 // Sync Status Section
@@ -151,7 +152,9 @@ private fun AddressInputSection(
     address: String,
     onAddressChange: (String) -> Unit,
     onLoadBalances: () -> Unit,
-    onCopyAddress: () -> Unit
+    onCopyAddress: () -> Unit,
+    onClearAddress: () -> Unit,
+    isAddressValid: Boolean
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -185,11 +188,18 @@ private fun AddressInputSection(
                     singleLine = true
                 )
 
+                TextButton(onClick = onClearAddress) {
+                    Text("Clear")
+                }
+
                 TextButton(onClick = onCopyAddress) {
                     Text("Copy")
                 }
 
-                IconButton(onClick = onLoadBalances) {
+                IconButton(
+                    onClick = onLoadBalances,
+                    enabled = isAddressValid
+                ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Refresh"

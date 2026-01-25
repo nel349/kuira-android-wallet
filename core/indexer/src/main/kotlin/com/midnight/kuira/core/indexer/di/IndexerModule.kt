@@ -94,8 +94,11 @@ object IndexerModule {
      */
     @Provides
     @Singleton
-    fun provideBalanceRepository(utxoManager: UtxoManager): BalanceRepository {
-        return BalanceRepository(utxoManager)
+    fun provideBalanceRepository(
+        utxoManager: UtxoManager,
+        indexerClient: IndexerClient
+    ): BalanceRepository {
+        return BalanceRepository(utxoManager, indexerClient)
     }
 
     /**

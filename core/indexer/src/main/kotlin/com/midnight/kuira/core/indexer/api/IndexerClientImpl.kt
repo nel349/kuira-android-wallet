@@ -407,4 +407,10 @@ class IndexerClientImpl(
         // since they share the same underlying client.
         // To explicitly close: launch { wsClient?.close() } in a coroutine scope
     }
+
+    override suspend fun resetConnection() {
+        // Close current WebSocket connection and all active subscriptions
+        wsClient?.close()
+        wsClient = null  // Force new connection on next subscription
+    }
 }

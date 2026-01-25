@@ -177,7 +177,10 @@ class SubscriptionManager(
                             Log.d(TAG, "Progress: highest transaction ID = ${result.highestTransactionId} (not saved - throttled)")
                         }
 
-                        // Always emit synced state (even if we didn't save to disk)
+                        // Emit Synced state when Progress update received
+                        // Note: Due to out-of-order message delivery, some transactions
+                        // may arrive after this Progress update. The UI will update
+                        // automatically when those transactions are processed (Room Flow).
                         emit(SyncState.Synced(result.highestTransactionId))
                     }
                 }

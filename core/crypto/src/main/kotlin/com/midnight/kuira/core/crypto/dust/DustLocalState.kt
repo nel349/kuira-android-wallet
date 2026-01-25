@@ -1,0 +1,448 @@
+// This file is part of Kuira Wallet.
+// Copyright (C) 2025 Kuira Wallet
+// SPDX-License-Identifier: Apache-2.0
+
+package com.midnight.kuira.core.crypto.dust
+
+import java.io.Closeable
+import java.math.BigInteger
+import javax.annotation.concurrent.ThreadSafe
+
+/**
+ * JNI bridge to Midnight's Rust DustLocalState for managing dust wallet state.
+ *
+ * **Architecture:**
+ * ```
+ * Kotlin (Android) → JNI → Rust FFI → Midnight Ledger (Rust)
+ * ```
+ *
+ * **What is DustLocalState?**
+ * DustLocalState is the core wallet state that tracks all dust UTXOs (tokens)
+ * for fee payments. It maintains:
+ * - All registered dust tokens
+ * - Dust generation progress over time
+ * - Spending history
+ * - Balance calculations
+ *
+ * **Thread Safety:**
+ * This class is NOT thread-safe. Do not share instances across threads.
+ * Each thread should create its own instance or use external synchronization.
+ *
+ * **Memory Safety:**
+ * This class manages native memory and MUST be explicitly closed to prevent leaks.
+ * Use try-with-resources or finally blocks:
+ * ```kotlin
+ * val state = DustLocalState.create()
+ * try {
+ *     val balance = state.getBalance(System.currentTimeMillis())
+ *     println("Balance: $balance Specks")
+ * } finally {
+ *     state.close()
+ * }
+ * ```
+ *
+ * **Usage:**
+ * ```kotlin
+ * // Create new state
+ * val state = DustLocalState.create() ?: error("Failed to create state")
+ * try {
+ *     // Get current balance
+ *     val now = System.currentTimeMillis()
+ *     val balance = state.getBalance(now)
+ *     println("Current balance: $balance Specks")
+ *
+ *     // Serialize state for storage
+ *     val serialized = state.serialize()
+ *     database.saveState(serialized)
+ * } finally {
+ *     state.close()
+ * }
+ * ```
+ *
+ * **Native Library:**
+ * This class loads `libkuira_crypto_ffi.so` (Android) which is compiled from:
+ * - Location: `rust/kuira-crypto-ffi/`
+ * - Dependencies: `midnight-ledger v6.1.0-alpha.5`
+ *
+ * **References:**
+ * - Rust FFI: `rust/kuira-crypto-ffi/src/dust_ffi.rs`
+ * - Dust Spec: `midnight-libraries/midnight-ledger/spec/dust.md`
+ */
+class DustLocalState private constructor(
+    /**
+     * Native pointer to Rust DustLocalState<InMemoryDB>.
+     * 0 means invalid/freed state.
+     */
+    private var nativePtr: Long
+) : Closeable {
+
+    /**
+     * Whether this state instance has been closed.
+     */
+    private var isClosed = false
+
+    companion object {
+        private const val TAG = "DustLocalState"
+
+        /**
+         * Logs error message using Android Log if available, otherwise System.err.
+         * This allows the code to work in both Android runtime and JVM unit tests.
+         */
+        private fun logError(message: String, throwable: Throwable? = null) {
+            try {
+                // Try to use Android Log API (available on Android runtime)
+                val logClass = Class.forName("android.util.Log")
+                val method = logClass.getMethod("e", String::class.java, String::class.java, Throwable::class.java)
+                method.invoke(null, TAG, message, throwable)
+            } catch (e: Exception) {
+                // Fall back to System.err for JVM unit tests
+                System.err.println("$TAG: $message")
+                throwable?.printStackTrace(System.err)
+            }
+        }
+
+        /**
+         * Whether the native library has been successfully loaded.
+         */
+        @Volatile
+        private var isNativeLibraryLoaded = false
+
+        /**
+         * Error message if native library failed to load.
+         */
+        @Volatile
+        private var nativeLibraryError: String? = null
+
+        init {
+            try {
+                System.loadLibrary("kuira_crypto_ffi")
+                isNativeLibraryLoaded = true
+                nativeLibraryError = null
+            } catch (e: UnsatisfiedLinkError) {
+                isNativeLibraryLoaded = false
+                nativeLibraryError = "Failed to load native library 'kuira_crypto_ffi': ${e.message}\n" +
+                        "Make sure libkuira_crypto_ffi.so is bundled in the APK and matches the device architecture."
+                logError("Failed to load kuira_crypto_ffi library", e)
+            } catch (e: Exception) {
+                isNativeLibraryLoaded = false
+                nativeLibraryError = "Unexpected error loading native library: ${e.message}"
+                logError("Unexpected error loading native library", e)
+            }
+        }
+
+        /**
+         * Checks if the native library is loaded and ready to use.
+         *
+         * @return true if native library loaded successfully, false otherwise
+         */
+        fun isLibraryLoaded(): Boolean = isNativeLibraryLoaded
+
+        /**
+         * Gets the error message if native library failed to load.
+         *
+         * @return Error message, or null if library loaded successfully
+         */
+        fun getLoadError(): String? = nativeLibraryError
+
+        /**
+         * Creates a new DustLocalState instance with default parameters.
+         *
+         * **Error Handling:**
+         * Returns null if:
+         * - Native library not loaded
+         * - Native function returns 0 (allocation failure)
+         *
+         * **Important:** The returned instance MUST be closed when done to prevent memory leaks.
+         *
+         * @return New DustLocalState instance, or null on error
+         */
+        fun create(): DustLocalState? {
+            if (!isNativeLibraryLoaded) {
+                logError("Cannot create dust state - native library not loaded: $nativeLibraryError")
+                return null
+            }
+
+            val ptr = nativeCreateDustLocalState()
+            if (ptr == 0L) {
+                logError("Native function returned null pointer")
+                return null
+            }
+
+            return DustLocalState(ptr)
+        }
+
+        /* Native functions */
+        private external fun nativeCreateDustLocalState(): Long
+    }
+
+    /**
+     * Gets the wallet balance at a specific time.
+     *
+     * **Time Parameter:**
+     * Unix timestamp in milliseconds (e.g., `System.currentTimeMillis()`).
+     * The balance is calculated based on dust generation progress up to this time.
+     *
+     * **Return Value:**
+     * Balance in Specks (smallest dust unit).
+     * - 1 Dust = 1,000,000 Specks
+     * - Uses BigInteger to support very large balances (u128 from Rust)
+     *
+     * **Error Handling:**
+     * Returns BigInteger.ZERO if:
+     * - State is closed
+     * - Native function returns null
+     * - Invalid timestamp
+     *
+     * @param timeMillis Unix timestamp in milliseconds
+     * @return Balance in Specks, or ZERO on error
+     */
+    fun getBalance(timeMillis: Long): BigInteger {
+        checkNotClosed()
+
+        val balanceStr = nativeDustWalletBalance(nativePtr, timeMillis)
+            ?: return BigInteger.ZERO
+
+        return try {
+            BigInteger(balanceStr)
+        } catch (e: NumberFormatException) {
+            logError("Invalid balance string from native: $balanceStr", e)
+            BigInteger.ZERO
+        }
+    }
+
+    /**
+     * Serializes the DustLocalState to bytes for persistent storage.
+     *
+     * **Serialization Format:**
+     * Uses Midnight's SCALE codec (same as Rust's Serializable trait).
+     * The serialized data includes:
+     * - All dust tokens
+     * - Dust parameters
+     * - Internal state
+     *
+     * **Usage:**
+     * ```kotlin
+     * val serialized = state.serialize()
+     * if (serialized != null) {
+     *     database.saveDustState(serialized)
+     * }
+     * ```
+     *
+     * **Deserialization:**
+     * To deserialize, you'll need to implement deserialization (Phase 2D-3).
+     *
+     * **Error Handling:**
+     * Returns null if:
+     * - State is closed
+     * - Native function returns null (serialization error)
+     *
+     * @return Serialized bytes, or null on error
+     */
+    fun serialize(): ByteArray? {
+        checkNotClosed()
+        return nativeSerializeDustState(nativePtr)
+    }
+
+    /**
+     * Gets the number of dust UTXOs in this wallet state.
+     *
+     * **What are UTXOs?**
+     * UTXOs (Unspent Transaction Outputs) are the individual dust tokens that make up
+     * your wallet balance. Each UTXO represents a distinct dust token with its own:
+     * - Initial value
+     * - Creation time
+     * - Backing Night UTXO
+     * - Generation progress
+     *
+     * **Usage:**
+     * ```kotlin
+     * val state = DustLocalState.create()!!
+     * try {
+     *     val count = state.getUtxoCount()
+     *     println("You have $count dust tokens")
+     * } finally {
+     *     state.close()
+     * }
+     * ```
+     *
+     * **Error Handling:**
+     * Returns 0 if:
+     * - State is closed
+     * - Native function returns 0
+     *
+     * @return Number of UTXOs in wallet
+     */
+    fun getUtxoCount(): Int {
+        checkNotClosed()
+        return nativeDustUtxoCount(nativePtr)
+    }
+
+    /**
+     * Gets a dust UTXO at a specific index.
+     *
+     * **Index Range:**
+     * Valid indices are 0 until getUtxoCount() - 1.
+     *
+     * **UTXO Format:**
+     * Returns hex-encoded serialized QualifiedDustOutput using Midnight's SCALE codec.
+     * This can be deserialized into a DustUtxo data class (to be implemented).
+     *
+     * **Usage:**
+     * ```kotlin
+     * val state = DustLocalState.create()!!
+     * try {
+     *     for (i in 0 until state.getUtxoCount()) {
+     *         val utxoHex = state.getUtxoAt(i)
+     *         if (utxoHex != null) {
+     *             println("UTXO $i: $utxoHex")
+     *         }
+     *     }
+     * } finally {
+     *     state.close()
+     * }
+     * ```
+     *
+     * **Error Handling:**
+     * Returns null if:
+     * - State is closed
+     * - Index is out of bounds
+     * - Native function returns null
+     *
+     * @param index Index of UTXO to retrieve (0-based)
+     * @return Hex-encoded serialized UTXO, or null if index out of bounds
+     */
+    fun getUtxoAt(index: Int): String? {
+        checkNotClosed()
+
+        if (index < 0) {
+            return null
+        }
+
+        return nativeDustGetUtxoAt(nativePtr, index)
+    }
+
+    /**
+     * Gets all dust UTXOs in this wallet state.
+     *
+     * **Convenience Method:**
+     * This method combines getUtxoCount() and getUtxoAt() to return all UTXOs
+     * as a list.
+     *
+     * **Performance:**
+     * This creates a list and fetches all UTXOs. For large wallets, consider
+     * iterating with getUtxoAt() instead.
+     *
+     * **Usage:**
+     * ```kotlin
+     * val state = DustLocalState.create()!!
+     * try {
+     *     val utxos = state.getAllUtxos()
+     *     println("Total UTXOs: ${utxos.size}")
+     *     utxos.forEach { utxoHex ->
+     *         // Process each UTXO
+     *     }
+     * } finally {
+     *     state.close()
+     * }
+     * ```
+     *
+     * @return List of hex-encoded serialized UTXOs (may be empty)
+     */
+    fun getAllUtxos(): List<String> {
+        checkNotClosed()
+
+        val count = getUtxoCount()
+        if (count == 0) {
+            return emptyList()
+        }
+
+        return (0 until count).mapNotNull { index ->
+            getUtxoAt(index)
+        }
+    }
+
+    /**
+     * Frees the native DustLocalState memory.
+     *
+     * **Important:**
+     * - Must be called exactly once per instance
+     * - After calling, this instance becomes invalid
+     * - Calling any method after close() will throw IllegalStateException
+     *
+     * **Idempotent:**
+     * Calling close() multiple times is safe (no-op after first call).
+     */
+    override fun close() {
+        if (isClosed) {
+            return // Already closed, no-op
+        }
+
+        if (nativePtr != 0L) {
+            nativeFreeDustLocalState(nativePtr)
+            nativePtr = 0L
+        }
+
+        isClosed = true
+    }
+
+    /**
+     * Checks if this state instance is closed.
+     *
+     * @return true if closed, false otherwise
+     */
+    fun isClosed(): Boolean = isClosed
+
+    /**
+     * Ensures the state is not closed, throws if it is.
+     *
+     * @throws IllegalStateException if state is closed
+     */
+    private fun checkNotClosed() {
+        check(!isClosed) {
+            "DustLocalState has been closed and cannot be used"
+        }
+    }
+
+    /* Native JNI functions */
+
+    /**
+     * Gets wallet balance from native state.
+     *
+     * @param statePtr Native pointer to DustLocalState
+     * @param timeMillis Unix timestamp in milliseconds
+     * @return Balance as decimal string (e.g., "1000000"), or null on error
+     */
+    private external fun nativeDustWalletBalance(statePtr: Long, timeMillis: Long): String?
+
+    /**
+     * Serializes native state to bytes.
+     *
+     * @param statePtr Native pointer to DustLocalState
+     * @return Serialized bytes, or null on error
+     */
+    private external fun nativeSerializeDustState(statePtr: Long): ByteArray?
+
+    /**
+     * Frees native DustLocalState pointer.
+     *
+     * @param statePtr Native pointer to DustLocalState
+     */
+    private external fun nativeFreeDustLocalState(statePtr: Long)
+
+    /**
+     * Gets the count of dust UTXOs from native state.
+     *
+     * @param statePtr Native pointer to DustLocalState
+     * @return Number of UTXOs, or 0 on error
+     */
+    private external fun nativeDustUtxoCount(statePtr: Long): Int
+
+    /**
+     * Gets a dust UTXO at a specific index from native state.
+     *
+     * @param statePtr Native pointer to DustLocalState
+     * @param index Index of UTXO to retrieve
+     * @return Hex-encoded serialized UTXO, or null if out of bounds
+     */
+    private external fun nativeDustGetUtxoAt(statePtr: Long, index: Int): String?
+}

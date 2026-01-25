@@ -146,4 +146,12 @@ interface IndexerClient {
      * Close the client and release resources.
      */
     fun close()
+
+    /**
+     * Reset the WebSocket connection (close all active subscriptions).
+     *
+     * Use this when switching addresses or cleaning up subscriptions.
+     * Next subscription will automatically reconnect.
+     */
+    suspend fun resetConnection()
 }
