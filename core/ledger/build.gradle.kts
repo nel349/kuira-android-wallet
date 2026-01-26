@@ -31,6 +31,14 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/LICENSE.md",
+                "META-INF/LICENSE-notice.md"
+            )
+        }
+    }
 }
 
 dependencies {
@@ -50,6 +58,9 @@ dependencies {
     // Kotlinx Serialization for JSON
     implementation(libs.kotlinx.serialization.json)
 
+    // Dependency Injection
+    implementation("javax.inject:javax.inject:1")
+
     // Crypto module (for TransactionSigner native library)
     implementation(project(":core:crypto"))
 
@@ -68,5 +79,8 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.room.runtime)
     androidTestImplementation(libs.room.ktx)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation("io.mockk:mockk-android:1.13.8")  // MockK for Android
     androidTestImplementation(project(":core:indexer"))
+    androidTestImplementation(project(":core:testing"))
 }

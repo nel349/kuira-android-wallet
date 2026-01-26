@@ -241,6 +241,24 @@ class DustLocalState private constructor(
     }
 
     /**
+     * Gets the native pointer to the DustLocalState.
+     *
+     * **Use Case:**
+     * Used by DustActionsBuilder to pass state pointer to FFI functions like create_dust_spend().
+     *
+     * **IMPORTANT:**
+     * - Pointer is only valid while state is not closed
+     * - Do NOT manually free this pointer (managed by close())
+     * - Do NOT use after calling close()
+     *
+     * @return Native pointer (0 if closed)
+     */
+    fun getStatePointer(): Long {
+        checkNotClosed()
+        return nativePtr
+    }
+
+    /**
      * Gets the wallet balance at a specific time.
      *
      * **Time Parameter:**

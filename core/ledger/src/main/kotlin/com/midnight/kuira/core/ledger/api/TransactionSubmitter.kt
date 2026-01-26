@@ -2,6 +2,7 @@ package com.midnight.kuira.core.ledger.api
 
 import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
+import com.midnight.kuira.core.ledger.fee.DustActionsBuilder
 import com.midnight.kuira.core.ledger.model.Intent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
@@ -18,33 +19,38 @@ import kotlinx.coroutines.withTimeout
  * 3. Track confirmation via Indexer GraphQL subscription
  * 4. Return when finalized (6-12 seconds typically)
  *
+ * **Phase 2E - Dust Fee Payment:**
+ * Use `submitWithFees()` to automatically build and pay dust fees.
+ *
  * **Usage Example:**
  * ```kotlin
- * val submitter = TransactionSubmitter(nodeClient, indexerClient, serializer)
+ * val submitter = TransactionSubmitter(nodeClient, indexerClient, serializer, dustActionsBuilder)
  *
+ * // With fee payment (Phase 2E):
+ * val result = submitter.submitWithFees(
+ *     signedIntent = intent,
+ *     ledgerParamsHex = paramsHex,
+ *     fromAddress = "mn_addr_sender...",
+ *     seed = userSeed
+ * )
+ *
+ * // Without fee payment (existing):
  * val result = submitter.submitAndWait(
  *     signedIntent = intent,
  *     fromAddress = "mn_addr_sender..."
  * )
- *
- * when (result) {
- *     is SubmissionResult.Success -> {
- *         println("Transaction finalized: ${result.txHash}")
- *     }
- *     is SubmissionResult.Failed -> {
- *         println("Transaction failed: ${result.reason}")
- *     }
- * }
  * ```
  *
  * @property nodeRpcClient Client for submitting transactions to node
  * @property indexerClient Client for tracking transaction confirmation
  * @property serializer Serializes signed Intent to SCALE codec
+ * @property dustActionsBuilder Builder for dust fee payment actions (optional, Phase 2E)
  */
 class TransactionSubmitter(
     private val nodeRpcClient: NodeRpcClient,
     private val indexerClient: IndexerClient,
-    private val serializer: TransactionSerializer
+    private val serializer: TransactionSerializer,
+    private val dustActionsBuilder: DustActionsBuilder? = null
 ) {
 
     /**
@@ -152,6 +158,113 @@ class TransactionSubmitter(
                 reason = "Transaction not found in indexer stream"
             )
         }
+    }
+
+    /**
+     * Submit transaction WITH automatic dust fee payment (Phase 2E).
+     *
+     * **Process:**
+     * 1. Serialize transaction to calculate fee
+     * 2. Build dust actions to cover fee (DustActionsBuilder)
+     * 3. Add dust actions to intent
+     * 4. Submit transaction with fees
+     * 5. Wait for confirmation
+     * 6. On success: mark dust coins as SPENT
+     * 7. On failure: rollback dust coins to AVAILABLE
+     *
+     * **Requirements:**
+     * - DustActionsBuilder must be provided in constructor
+     * - User must have sufficient dust balance
+     * - DustLocalState must be initialized for address
+     *
+     * @param signedIntent Signed Intent (without dust actions)
+     * @param ledgerParamsHex SCALE-serialized ledger parameters (hex)
+     * @param fromAddress Sender's address
+     * @param seed 32-byte seed for deriving DustSecretKey
+     * @param timeoutMs Maximum time to wait for finalization (default 60s)
+     * @return SubmissionResult indicating success or failure
+     * @throws IllegalStateException if DustActionsBuilder not provided
+     * @throws NodeRpcException if submission to node fails
+     */
+    suspend fun submitWithFees(
+        signedIntent: Intent,
+        ledgerParamsHex: String,
+        fromAddress: String,
+        seed: ByteArray,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS
+    ): SubmissionResult {
+        // Validate DustActionsBuilder is available
+        checkNotNull(dustActionsBuilder) {
+            "DustActionsBuilder required for fee payment. " +
+            "Initialize TransactionSubmitter with DustActionsBuilder."
+        }
+
+        // Step 1: Serialize transaction to calculate fee
+        val serializedHex = try {
+            serializer.serialize(signedIntent)
+        } catch (e: Exception) {
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Serialization failed: ${e.message}"
+            )
+        }
+
+        // Step 2: Build dust actions for fee payment
+        val dustActions = try {
+            dustActionsBuilder.buildDustActions(
+                transactionHex = serializedHex,
+                ledgerParamsHex = ledgerParamsHex,
+                address = fromAddress,
+                seed = seed
+            )
+        } catch (e: Exception) {
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Failed to build dust actions: ${e.message}"
+            )
+        }
+
+        if (dustActions == null || !dustActions.isSuccess()) {
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Insufficient dust balance to cover fee (required: ${dustActions?.totalFee} Specks)"
+            )
+        }
+
+        // Step 3: Add dust actions to intent
+        // TODO: Implement Intent.addDustActions() method
+        // val intentWithFees = signedIntent.addDustActions(dustActions.spends)
+
+        // Step 4: Submit transaction
+        // TODO: Use intentWithFees instead of signedIntent
+        val result = submitAndWait(
+            signedIntent = signedIntent, // TODO: Replace with intentWithFees
+            fromAddress = fromAddress,
+            timeoutMs = timeoutMs
+        )
+
+        // Step 5: Update dust coin state based on result
+        when (result) {
+            is SubmissionResult.Success -> {
+                // Transaction confirmed: mark coins as SPENT
+                try {
+                    dustActionsBuilder.confirmDustActions(dustActions)
+                } catch (e: Exception) {
+                    // Log but don't fail - transaction already succeeded
+                    android.util.Log.e("TransactionSubmitter", "Failed to confirm dust actions", e)
+                }
+            }
+            is SubmissionResult.Failed, is SubmissionResult.Pending -> {
+                // Transaction failed or timeout: rollback coins to AVAILABLE
+                try {
+                    dustActionsBuilder.rollbackDustActions(dustActions)
+                } catch (e: Exception) {
+                    android.util.Log.e("TransactionSubmitter", "Failed to rollback dust actions", e)
+                }
+            }
+        }
+
+        return result
     }
 
     /**

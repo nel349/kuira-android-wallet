@@ -1,6 +1,7 @@
 package com.midnight.kuira.core.ledger
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.midnight.kuira.core.crypto.address.Bech32m
 import com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
 import com.midnight.kuira.core.ledger.model.Intent
 import com.midnight.kuira.core.ledger.model.UnshieldedOffer
@@ -27,6 +28,8 @@ class SealedTransactionTest {
         val serializer = FfiTransactionSerializer()
 
         // Build test transaction
+        val testOwnerAddress = Bech32m.encode("mn_addr_undeployed", ByteArray(32))
+
         val inputs = listOf(
             UtxoSpend(
                 value = java.math.BigInteger("5000000"),
@@ -34,19 +37,22 @@ class SealedTransactionTest {
                 tokenType = "0000000000000000000000000000000000000000000000000000000000000000",
                 intentHash = "00e28d3099efda8b36d6277c61f4ce062d52102898b1314c16bd28c9d905b59c",
                 outputNo = 0,
-                owner = "mn_addr_test"  // Required field
+                owner = testOwnerAddress
             )
         )
+
+        val recipientAddress1 = Bech32m.encode("mn_addr_undeployed", ByteArray(32) { 1.toByte() })
+        val recipientAddress2 = Bech32m.encode("mn_addr_undeployed", ByteArray(32) { 2.toByte() })
 
         val outputs = listOf(
             UtxoOutput(
                 value = java.math.BigInteger("1000000"),
-                owner = "mn1ezy8gk3rkx2jtwnf7qw8qgz03fl2y730fvhfeaj4w4m296v4cvkssz74tx",
+                owner = recipientAddress1,
                 tokenType = "0000000000000000000000000000000000000000000000000000000000000000"
             ),
             UtxoOutput(
                 value = java.math.BigInteger("4000000"),
-                owner = "mn1pz9g2hx5q7cxj0fjr27gqcf36zqt3ulzuhmf06z0lu8vdxlq62ulqwufac",
+                owner = recipientAddress2,
                 tokenType = "0000000000000000000000000000000000000000000000000000000000000000"
             )
         )
@@ -78,8 +84,16 @@ class SealedTransactionTest {
 
         // Decode and verify tag
         val bytes = txHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        val tagEndIndex = bytes.indexOfFirst { it == ':'.code.toByte() }
-        require(tagEndIndex > 0) { "No tag delimiter ':' found" }
+
+        // Find the end of the tag - look for "):" pattern which marks the end
+        var tagEndIndex = -1
+        for (i in 0 until bytes.size - 1) {
+            if (bytes[i] == ')'.code.toByte() && bytes[i+1] == ':'.code.toByte()) {
+                tagEndIndex = i + 1  // Include the final ':'
+                break
+            }
+        }
+        require(tagEndIndex > 0) { "No tag delimiter ')' found" }
 
         val tagBytes = bytes.sliceArray(0..tagEndIndex)
         val tag = String(tagBytes, Charsets.UTF_8)

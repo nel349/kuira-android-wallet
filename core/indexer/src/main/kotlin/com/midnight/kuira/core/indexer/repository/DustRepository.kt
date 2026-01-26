@@ -328,11 +328,74 @@ class DustRepository @Inject constructor(
             return
         }
 
-        // TODO: Deserialize DustLocalState from bytes
-        // For now, we skip this step since deserialization is not yet implemented
-        // The database cache is populated during event processing instead
+        // Deserialize DustLocalState
+        val state = DustLocalState.deserialize(serialized) ?: run {
+            android.util.Log.e(TAG, "Failed to deserialize dust state for $address")
+            return
+        }
 
-        android.util.Log.d(TAG, "Synced dust tokens for $address (deserialization pending)")
+        try {
+            // Get UTXO count
+            val utxoCount = state.getUtxoCount()
+            android.util.Log.d(TAG, "Syncing $utxoCount UTXOs to cache for $address")
+
+            // TODO: Parse UTXO JSON and insert into database
+            // For now, we rely on event processing to populate the cache
+
+        } finally {
+            // Always close state
+            state.close()
+        }
+
+        android.util.Log.d(TAG, "Synced dust tokens for $address")
+    }
+
+    /**
+     * Deserializes DustLocalState for use in fee payment.
+     *
+     * **Use Case:**
+     * Called by DustActionsBuilder to get state pointer for creating DustSpend actions.
+     *
+     * **IMPORTANT:**
+     * Caller MUST call saveState() after creating spends to persist the updated state.
+     * Caller MUST call state.close() when done.
+     *
+     * @param address Wallet address
+     * @return DustLocalState instance, or null if not found
+     */
+    suspend fun loadState(address: String): DustLocalState? {
+        val serialized = getSerializedState(address) ?: run {
+            android.util.Log.d(TAG, "No dust state found for $address")
+            return null
+        }
+
+        val state = DustLocalState.deserialize(serialized)
+        if (state == null) {
+            android.util.Log.e(TAG, "Failed to deserialize dust state for $address")
+            return null
+        }
+
+        android.util.Log.d(TAG, "Loaded dust state for $address")
+        return state
+    }
+
+    /**
+     * Saves updated DustLocalState after creating spends.
+     *
+     * **When to call:**
+     * After calling state.spend() or other state-modifying operations.
+     *
+     * @param address Wallet address
+     * @param state DustLocalState instance
+     */
+    suspend fun saveState(address: String, state: DustLocalState) {
+        val serialized = state.serialize() ?: run {
+            android.util.Log.e(TAG, "Failed to serialize dust state for $address")
+            return
+        }
+
+        saveSerializedState(address, serialized)
+        android.util.Log.d(TAG, "Saved updated dust state for $address")
     }
 
     // ========== Persistence ==========

@@ -4,6 +4,8 @@
 
 package com.midnight.kuira.core.ledger.model
 
+import com.midnight.kuira.core.ledger.fee.DustSpendCreator
+
 /**
  * Represents a complete Midnight transaction intent.
  *
@@ -14,6 +16,7 @@ package com.midnight.kuira.core.ledger.model
  * - Top-level transaction container
  * - Contains offers for unshielded assets
  * - Includes TTL (time-to-live) for transaction expiry
+ * - Includes dust actions for fee payment (Phase 2E)
  *
  * **Midnight SDK Equivalent:**
  * ```typescript
@@ -27,30 +30,22 @@ package com.midnight.kuira.core.ledger.model
  * }
  * ```
  *
- * **Phase 2 Scope (Unshielded Only):**
- * - Only `guaranteedUnshieldedOffer` is used
- * - No fallible offer (keep as null)
+ * **Phase 2E (With Dust):**
+ * - `guaranteedUnshieldedOffer` for unshielded transfers
+ * - `dustActions` for fee payment (REQUIRED for transaction to be valid)
+ * - No fallible offer
  * - No smart contract actions
- * - No dust actions
  * - bindingCommitment added in Phase 2D (signing)
  *
- * **Phase 2 Simplification:**
- * This model is simplified for Phase 2 (unshielded transfers only). The full
- * Midnight ledger Intent structure includes additional fields that will be
- * populated by the JNI wrapper in Phase 2D-FFI:
- * - `actions: Array<ContractAction>` → Empty array (no contract calls)
- * - `dust_actions: Option<DustActions>` → None (no Dust protocol)
- * - `binding_commitment: B` → Created during binding phase (Phase 2D)
- *
- * **JNI Mapping (Phase 2D-FFI):**
+ * **JNI Mapping (Phase 2E-FFI):**
  * When serializing via midnight-ledger, the JNI wrapper will construct the
- * full Rust Intent structure with Phase 2 defaults:
+ * full Rust Intent structure:
  * ```rust
  * Intent {
  *     guaranteed_unshielded_offer: Some(...),
  *     fallible_unshielded_offer: None,
  *     actions: vec![],                    // Empty for Phase 2
- *     dust_actions: None,                 // None for Phase 2
+ *     dust_actions: Some(...),            // Phase 2E: Dust fee payment
  *     ttl: ...,
  *     binding_commitment: PreBinding      // Created by ledger
  * }
@@ -59,7 +54,6 @@ package com.midnight.kuira.core.ledger.model
  * **Future Phases:**
  * - TODO(Phase 3): Add shielded offer support
  * - TODO(Phase 5): Add contract action support (actions field)
- * - TODO(Phase 6): Add dust action support (dust_actions field)
  *
  * **Usage in Transaction:**
  * ```kotlin
@@ -82,11 +76,13 @@ package com.midnight.kuira.core.ledger.model
  *
  * @property guaranteedUnshieldedOffer Segment 0 offer (always executes)
  * @property fallibleUnshieldedOffer Optional fallible segment (may fail)
+ * @property dustActions List of dust spends for fee payment (Phase 2E)
  * @property ttl Time-to-live in milliseconds (Unix epoch time)
  */
 data class Intent(
     val guaranteedUnshieldedOffer: UnshieldedOffer?,
     val fallibleUnshieldedOffer: UnshieldedOffer?,
+    val dustActions: List<DustSpendCreator.DustSpend>? = null,
     val ttl: Long
 ) {
     init {
@@ -180,15 +176,18 @@ data class Intent(
          *
          * @param guaranteedOffer Guaranteed unshielded offer (segment 0)
          * @param fallibleOffer Optional fallible offer
+         * @param dustActions Optional dust spends for fee payment
          * @return Intent with TTL set to now + 5 minutes
          */
         fun withDefaultTtl(
             guaranteedOffer: UnshieldedOffer?,
-            fallibleOffer: UnshieldedOffer? = null
+            fallibleOffer: UnshieldedOffer? = null,
+            dustActions: List<DustSpendCreator.DustSpend>? = null
         ): Intent {
             return Intent(
                 guaranteedUnshieldedOffer = guaranteedOffer,
                 fallibleUnshieldedOffer = fallibleOffer,
+                dustActions = dustActions,
                 ttl = System.currentTimeMillis() + DEFAULT_TTL_MILLIS
             )
         }

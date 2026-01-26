@@ -384,6 +384,90 @@ class IndexerClientImpl(
         }
     }
 
+    override suspend fun queryDustEvents(maxBlocks: Int): String = retryWithPolicy() {
+        try {
+            println("\n🔍 Querying dust events from recent $maxBlocks blocks...")
+
+            // Collect all dust events from recent blocks
+            val allEvents = mutableListOf<DustEventData>()
+
+            for (height in 0 until maxBlocks) {
+                val query = """
+                    query BlockDustEvents {
+                      block(offset: { height: $height }) {
+                        height
+                        transactions {
+                          dustLedgerEvents {
+                            id
+                            raw
+                            maxId
+                          }
+                        }
+                      }
+                    }
+                """.trimIndent()
+
+                val response = httpClient.post(graphqlEndpoint) {
+                    contentType(ContentType.Application.Json)
+                    setBody(GraphQLRequest(query = query, variables = null))
+                }
+
+                val responseBody = response.bodyAsText()
+                val jsonResponse = json.parseToJsonElement(responseBody).jsonObject
+
+                // Check if block exists
+                val blockData = jsonResponse["data"]?.jsonObject?.get("block")
+                if (blockData == null || blockData.toString() == "null") {
+                    // No more blocks
+                    break
+                }
+
+                // Extract dust events from this block
+                val block = blockData.jsonObject
+                val transactions = block["transactions"]?.jsonArray ?: continue
+
+                for (tx in transactions) {
+                    val dustEvents = tx.jsonObject["dustLedgerEvents"]?.jsonArray ?: continue
+                    if (dustEvents.isEmpty()) continue
+
+                    // Found transactions with dust events
+                    for (event in dustEvents) {
+                        val eventObj = event.jsonObject
+                        val id = eventObj["id"]?.jsonPrimitive?.long ?: continue
+                        val raw = eventObj["raw"]?.jsonPrimitive?.content ?: continue
+                        val maxId = eventObj["maxId"]?.jsonPrimitive?.long ?: continue
+
+                        allEvents.add(DustEventData(id, raw, maxId))
+                    }
+                }
+            }
+
+            if (allEvents.isEmpty()) {
+                println("⚠️  No dust events found in recent blocks")
+                return@retryWithPolicy ""
+            }
+
+            // Sort events by ID and combine into single hex string
+            allEvents.sortBy { it.id }
+            val combinedHex = allEvents.joinToString("") { it.raw }
+
+            println("✅ Found ${allEvents.size} dust events (${combinedHex.length / 2} bytes)")
+
+            combinedHex
+        } catch (e: Exception) {
+            throw InvalidResponseException("Failed to query dust events: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Dust event data structure.
+     */
+    private data class DustEventData(
+        val id: Long,
+        val raw: String,
+        val maxId: Long
+    )
+
     override suspend fun isHealthy(): Boolean {
         return try {
             // Try to get network state with a short timeout

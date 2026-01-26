@@ -1,6 +1,7 @@
 package com.midnight.kuira.core.ledger.api
 
 import com.midnight.kuira.core.crypto.address.Bech32m
+import com.midnight.kuira.core.ledger.fee.DustSpendCreator
 import com.midnight.kuira.core.ledger.model.Intent
 import com.midnight.kuira.core.ledger.model.UtxoSpend
 import com.midnight.kuira.core.ledger.model.UtxoOutput
@@ -71,12 +72,14 @@ class FfiTransactionSerializer : TransactionSerializer {
         val inputsJson = serializeInputsToJson(offer.inputs)
         val outputsJson = serializeOutputsToJson(offer.outputs)
         val signaturesJson = serializeSignaturesToJson(offer.signatures)
+        val dustActionsJson = serializeDustActionsToJson(intent.dustActions)
 
         // Call Rust FFI for real SCALE serialization
         val hexResult = nativeSerializeTransaction(
             inputsJson,
             outputsJson,
             signaturesJson,
+            dustActionsJson,
             intent.ttl,
             commitment  // CRITICAL: Use same binding_commitment from signing
         ) ?: throw IllegalStateException("FFI SCALE serialization failed")
@@ -85,6 +88,102 @@ class FfiTransactionSerializer : TransactionSerializer {
         bindingCommitment = null
 
         return hexResult
+    }
+
+    /**
+     * Serialize a signed transaction WITH DUST FEE PAYMENT to SCALE codec hex.
+     *
+     * This method calls the Rust FFI that creates real DustActions by calling
+     * state.spend() on the provided DustLocalState.
+     *
+     * @param inputs Transaction inputs
+     * @param outputs Transaction outputs
+     * @param signatures Hex-encoded signatures (one per input)
+     * @param dustState DustLocalState with available dust
+     * @param seed 32-byte seed for deriving DustSecretKey
+     * @param dustUtxosJson JSON array of {utxo_index, v_fee} selections
+     * @param ttl Transaction time-to-live (milliseconds)
+     * @return Hex-encoded SCALE bytes (without "0x" prefix)
+     * @throws IllegalArgumentException if parameters are invalid
+     * @throws IllegalStateException if serialization fails
+     */
+    fun serializeWithDust(
+        inputs: List<UtxoSpend>,
+        outputs: List<UtxoOutput>,
+        signatures: List<String>,
+        dustState: com.midnight.kuira.core.crypto.dust.DustLocalState,
+        seed: ByteArray,
+        dustUtxosJson: String,
+        ttl: Long
+    ): String {
+        // Validate
+        require(seed.size == 32) { "Seed must be 32 bytes" }
+        require(signatures.size == inputs.size) { "Must have one signature per input" }
+
+        val commitment = bindingCommitment
+            ?: throw IllegalStateException("bindingCommitment not set! Must call getSigningMessageForInput() first")
+
+        // Convert to JSON
+        val inputsJson = serializeInputsToJson(inputs)
+        val outputsJson = serializeOutputsToJson(outputs)
+        val signaturesJson = serializeSignaturesToJson(signatures)
+
+        // Call Rust FFI with dust
+        val hexResult = nativeSerializeTransactionWithDust(
+            inputsJson,
+            outputsJson,
+            signaturesJson,
+            dustState.nativePtr,
+            seed,
+            dustUtxosJson,
+            System.currentTimeMillis(),
+            ttl,
+            commitment
+        ) ?: throw IllegalStateException("FFI SCALE serialization with dust failed")
+
+        // Clear binding_commitment after use
+        bindingCommitment = null
+
+        return hexResult
+    }
+
+    /**
+     * Get signing message for a specific input (required before signing).
+     *
+     * This function generates the message that must be signed for the given input.
+     * It also stores the binding_commitment internally for later use in serialize().
+     *
+     * @param inputs Transaction inputs (WITHOUT signatures)
+     * @param outputs Transaction outputs
+     * @param inputIndex Which input to generate signature for (0-based)
+     * @param ttl Transaction time-to-live (milliseconds)
+     * @return Hex-encoded signing message
+     */
+    fun getSigningMessageForInput(
+        inputs: List<UtxoSpend>,
+        outputs: List<UtxoOutput>,
+        inputIndex: Int,
+        ttl: Long
+    ): String {
+        require(inputIndex >= 0 && inputIndex < inputs.size) {
+            "inputIndex $inputIndex out of bounds [0, ${inputs.size})"
+        }
+
+        val inputsJson = serializeInputsToJson(inputs)
+        val outputsJson = serializeOutputsToJson(outputs)
+
+        val result = nativeGetSigningMessageForInput(inputsJson, outputsJson, inputIndex, ttl)
+            ?: throw IllegalStateException("Failed to get signing message for input $inputIndex")
+
+        // Parse result: "binding_commitment_hex|signing_message_hex"
+        val parts = result.split("|")
+        require(parts.size == 2) { "Invalid signing message format" }
+
+        // Store binding_commitment for later use in serialize()
+        bindingCommitment = parts[0]
+
+        // Return signing message
+        return parts[1]
     }
 
     /**
@@ -162,6 +261,37 @@ class FfiTransactionSerializer : TransactionSerializer {
     }
 
     /**
+     * Serializes dust actions to JSON array.
+     *
+     * Format matches Rust JsonDustSpend struct:
+     * ```json
+     * [{
+     *   "v_fee": "1000000",
+     *   "old_nullifier": "hex-encoded-nullifier",
+     *   "new_commitment": "hex-encoded-commitment",
+     *   "proof": "proof-preimage"
+     * }]
+     * ```
+     */
+    private fun serializeDustActionsToJson(dustActions: List<DustSpendCreator.DustSpend>?): String {
+        if (dustActions == null || dustActions.isEmpty()) {
+            return "[]"  // Empty array for no dust actions
+        }
+
+        val jsonArray = JSONArray()
+        for (dustSpend in dustActions) {
+            val jsonObject = JSONObject().apply {
+                put("v_fee", dustSpend.vFee.toString())
+                put("old_nullifier", dustSpend.oldNullifier)
+                put("new_commitment", dustSpend.newCommitment)
+                put("proof", dustSpend.proof)
+            }
+            jsonArray.put(jsonObject)
+        }
+        return jsonArray.toString()
+    }
+
+    /**
      * Converts ByteArray to lowercase hex string (no "0x" prefix).
      */
     private fun ByteArray.toHexString(): String {
@@ -174,6 +304,7 @@ class FfiTransactionSerializer : TransactionSerializer {
      * @param inputsJson JSON array of UtxoSpend objects
      * @param outputsJson JSON array of UtxoOutput objects
      * @param signaturesJson JSON array of signature hex strings
+     * @param dustActionsJson JSON array of DustSpend objects (empty array if no dust)
      * @param ttl Transaction time-to-live (milliseconds)
      * @param bindingCommitmentHex Hex-encoded binding commitment (MUST match the one from nativeGetSigningMessageForInput!)
      * @return Hex-encoded SCALE bytes, or null on error
@@ -182,6 +313,36 @@ class FfiTransactionSerializer : TransactionSerializer {
         inputsJson: String,
         outputsJson: String,
         signaturesJson: String,
+        dustActionsJson: String,
+        ttl: Long,
+        bindingCommitmentHex: String
+    ): String?
+
+    /**
+     * JNI: Serializes transaction with REAL dust fee payment.
+     *
+     * This function creates real DustActions by calling state.spend() on the DustLocalState,
+     * following the TypeScript SDK pattern. This is the CORRECT way to add dust fees.
+     *
+     * @param inputsJson JSON array of UtxoSpend objects
+     * @param outputsJson JSON array of UtxoOutput objects
+     * @param signaturesJson JSON array of signature hex strings
+     * @param dustStatePtr Pointer to DustLocalState (from DustWalletManager)
+     * @param seed 32-byte seed for deriving DustSecretKey
+     * @param dustUtxosJson JSON array of {utxo_index, v_fee} objects
+     * @param currentTimeMs Current time in milliseconds
+     * @param ttl Transaction time-to-live (milliseconds)
+     * @param bindingCommitmentHex Hex-encoded binding commitment
+     * @return Hex-encoded SCALE bytes, or null on error
+     */
+    private external fun nativeSerializeTransactionWithDust(
+        inputsJson: String,
+        outputsJson: String,
+        signaturesJson: String,
+        dustStatePtr: Long,
+        seed: ByteArray,
+        dustUtxosJson: String,
+        currentTimeMs: Long,
         ttl: Long,
         bindingCommitmentHex: String
     ): String?
