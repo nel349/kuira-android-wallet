@@ -136,6 +136,33 @@ interface IndexerClient {
     suspend fun getEventsInRange(fromId: Long, toId: Long): List<RawLedgerEvent>
 
     /**
+     * Query dust events from recent blocks.
+     *
+     * Scans recent blocks to find all dust ledger events (registration, spends, etc.).
+     * Returns combined SCALE-encoded events that can be replayed into DustLocalState.
+     *
+     * **GraphQL Query:**
+     * ```graphql
+     * query BlockDustEvents {
+     *   block(offset: { height: $height }) {
+     *     height
+     *     transactions {
+     *       dustLedgerEvents {
+     *         id
+     *         raw
+     *         maxId
+     *       }
+     *     }
+     *   }
+     * }
+     * ```
+     *
+     * @param maxBlocks Maximum number of recent blocks to scan (default: 100)
+     * @return Combined SCALE hex string of all dust events, sorted by ID
+     */
+    suspend fun queryDustEvents(maxBlocks: Int = 100): String
+
+    /**
      * Check if indexer is healthy and reachable.
      *
      * @return true if indexer is responding, false otherwise

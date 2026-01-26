@@ -388,10 +388,41 @@ class IndexerClientImpl(
         try {
             println("\n🔍 Querying dust events from recent $maxBlocks blocks...")
 
-            // Collect all dust events from recent blocks
+            // First, get the current block height
+            val currentHeightQuery = """
+                query CurrentBlock {
+                  block {
+                    height
+                  }
+                }
+            """.trimIndent()
+
+            val heightResponse = httpClient.post(graphqlEndpoint) {
+                contentType(ContentType.Application.Json)
+                setBody(GraphQLRequest(query = currentHeightQuery, variables = null))
+            }
+
+            val heightJson = json.parseToJsonElement(heightResponse.bodyAsText()).jsonObject
+            val currentHeight = heightJson["data"]?.jsonObject?.get("block")?.jsonObject?.get("height")?.jsonPrimitive?.long ?: 0L
+
+            println("   Current block height: $currentHeight")
+
+            // Collect all dust events from ALL blocks (not just recent)
+            // We need ALL events from chain start to properly replay the Merkle tree
             val allEvents = mutableListOf<DustEventData>()
 
-            for (height in 0 until maxBlocks) {
+            // IMPORTANT: Merkle tree is GLOBAL and SEQUENTIAL
+            // We must replay ALL dust events from genesis to build correct tree state
+            // Even events for other wallets affect the global Merkle tree structure
+            println("   Scanning ALL blocks from 0 to $currentHeight (needed for Merkle tree)...")
+            println("   This may take a few minutes...")
+            val startBlock = 0L
+
+            for (height in startBlock..currentHeight) {
+                // Progress logging every 5000 blocks
+                if (height % 5000 == 0L && height > 0) {
+                    println("   Progress: block $height / $currentHeight (${(height * 100 / currentHeight)}%)")
+                }
                 val query = """
                     query BlockDustEvents {
                       block(offset: { height: $height }) {
@@ -447,11 +478,35 @@ class IndexerClientImpl(
                 return@retryWithPolicy ""
             }
 
-            // Sort events by ID and combine into single hex string
+            // Sort events by ID
             allEvents.sortBy { it.id }
+
+            // IMPORTANT: Each event's `raw` field contains "midnight:event[v5]:" + SCALE Event
+            // The TypeScript SDK deserializes each event INDIVIDUALLY, then collects into Vec
+            // We'll pass the raw events (WITH prefix) and let Rust handle stripping + deserializing
+
             val combinedHex = allEvents.joinToString("") { it.raw }
 
-            println("✅ Found ${allEvents.size} dust events (${combinedHex.length / 2} bytes)")
+            println("✅ Found ${allEvents.size} dust events")
+            println("   Event IDs: ${allEvents.map { it.id }.take(10)}${if (allEvents.size > 10) "..." else ""}")
+            println("   Last IDs: ${allEvents.map { it.id }.takeLast(10)}")
+
+            // Check for gaps in event IDs
+            val ids = allEvents.map { it.id }
+            val gaps = mutableListOf<Pair<Long, Long>>()
+            for (i in 0 until ids.size - 1) {
+                if (ids[i + 1] - ids[i] > 1) {
+                    gaps.add(Pair(ids[i], ids[i + 1]))
+                }
+            }
+            if (gaps.isNotEmpty()) {
+                println("⚠️  WARNING: Gaps detected in event IDs:")
+                gaps.forEach { (from, to) ->
+                    println("      Gap: ${from} → ${to} (missing ${to - from - 1} events)")
+                }
+            }
+            println("   Total hex length: ${combinedHex.length} chars")
+            println("   Note: Each event has 'midnight:event[v5]:' prefix")
 
             combinedHex
         } catch (e: Exception) {

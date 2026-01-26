@@ -52,7 +52,7 @@ class DustFeePaymentE2ETest {
     private var dustState: DustLocalState? = null
 
     companion object {
-        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
         private val NATIVE_TOKEN = "0".repeat(64)
         private val TEST_INTENT_HASH = "deadbeef" + "0".repeat(56)
 

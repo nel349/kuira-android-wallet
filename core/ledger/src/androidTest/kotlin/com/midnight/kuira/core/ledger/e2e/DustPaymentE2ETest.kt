@@ -63,7 +63,7 @@ class DustPaymentE2ETest {
         /**
          * Test mnemonic (DO NOT USE IN PRODUCTION).
          */
-        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
 
         /**
          * Local node URL.

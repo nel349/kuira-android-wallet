@@ -4,9 +4,9 @@
 
 **Duration:** 30-40 hours estimated (36h actual)
 
-**Status:** ✅ **COMPLETE** - Dust fee payment fully implemented and tested
+**Status:** 🟡 **IMPLEMENTATION COMPLETE** - Integration tests pending node setup
 
-**Completion Date:** January 26, 2026
+**Last Updated:** January 26, 2026
 
 ---
 
@@ -33,9 +33,9 @@ Phase 2D: Dust FFI (✅ COMPLETE)
 
 ---
 
-## ✅ PHASE 2-DUST COMPLETE
+## 🟡 PHASE 2-DUST IMPLEMENTATION STATUS
 
-**All dust fee payment mechanisms implemented and tested:**
+**All dust fee payment mechanisms implemented:**
 
 1. ✅ **Dust State Management** - DustLocalState FFI with create/serialize/deserialize
 2. ✅ **Event Replay** - Query dust events from indexer and replay into state
@@ -43,17 +43,25 @@ Phase 2D: Dust FFI (✅ COMPLETE)
 4. ✅ **Fee Calculation** - FFI using midnight-ledger
 5. ✅ **Dust Spend Creation** - Real DustSpend objects with cryptographic proofs
 6. ✅ **Transaction Serialization** - serialize_unshielded_transaction_with_dust FFI
-7. ✅ **Integration Test** - RealDustFeePaymentTest proves complete flow works
+7. ✅ **Integration Test Code** - RealDustFeePaymentTest (compiles, NOT run yet)
 
-**Test Coverage:**
-- 20 Rust FFI tests (all passing)
-- 23 Android instrumented tests (all passing)
-- 47 Kotlin unit tests (all passing)
-- 2 End-to-end integration tests (RealDustFeePaymentTest)
+**Test Coverage (Passing):**
+- 20 Rust FFI tests ✅
+- 23 Android instrumented tests ✅
+- 47 Kotlin unit tests ✅
 
-**What This Unblocks:**
-- ✅ Phase 2 unblocked - transactions can now include dust fee payment
-- ⏳ Phase 2 Phase 2E (RPC submission) - can now submit transactions with dust
+**Integration Tests (Pending):**
+- ⏳ RealDustFeePaymentTest (requires local node + funded wallet)
+  - Test 1: Query and replay dust events
+  - Test 2: Serialize transaction with dust fee payment
+
+**Blocked By:**
+- Requires local Midnight node running at http://10.0.2.2:9944
+- Requires funded wallet with NIGHT UTXOs
+- Requires dust registered via Lace wallet
+
+**What This Unblocks (Once Verified):**
+- ⏳ Phase 2 Phase 2E (RPC submission) - can submit transactions with dust
 - ⏳ Phase 2F (Send UI) - UI can build transactions with dust fees
 
 ---
@@ -114,7 +122,13 @@ Phase 2D: Dust FFI (✅ COMPLETE)
 - Serializes complete Intent with dust fee payment to SCALE codec
 - **Build:** All Android ABIs successfully compiled and linked
 
-**Total Time:** ~36 hours
+**Phase 2E-4: Integration Tests (3h)**
+- Created RealDustFeePaymentTest with 2 end-to-end tests
+- Test 1: Query dust events from indexer and replay into DustLocalState
+- Test 2: Build, sign, and serialize transaction with dust fee payment
+- **Status:** Code compiles ✅, tests NOT run yet (requires node setup)
+
+**Total Time:** ~39 hours
 
 ### ⏳ Pending Phases
 

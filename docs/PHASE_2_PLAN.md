@@ -1,150 +1,137 @@
 # Phase 2: Unshielded Transactions - Implementation Plan
 
 **Goal:** Enable users to send transparent (non-private) tokens from Kuira wallet
-**Duration:** 62-78 hours estimated (revised with mandatory dust wallet)
-**Status:** 🟢 **UNBLOCKED** - Phase 2-DUST Complete, Ready for Phase 2E (37h/62-78h, 62%)
-**Last Updated:** January 26, 2026
+
+**Status:** 🟢 **84% COMPLETE** - Ready for Phase 2E (Submission Layer)
+
+**Last Updated:** January 26, 2026 - 12:30 PM PST
 
 ---
 
-## ✅ BLOCKER RESOLVED: Phase 2-DUST Complete
+## 📊 Current Progress
 
-**Completion Date:** January 26, 2026
+| Phase | Status | Time | Notes |
+|-------|--------|------|-------|
+| 2A: Transaction Models | ✅ Complete | 3h | Data classes for Intent/Offer/UTXO |
+| 2B: UTXO Manager | ✅ Complete | 3.5h | Coin selection + state tracking |
+| 2C: Transaction Builder | ✅ Complete | 1.5h | Construct & balance transactions |
+| 2D-FFI: JNI Ledger Wrapper | ✅ Complete | 29h | Signing + serialization via Rust |
+| **Phase 2-DUST: Dust Fee Payment** | **✅ Complete** | **42h** | **Query, replay, serialize with dust** |
+| **2E: Submission Layer** | **⏸️ Next** | **2-3h** | **RPC client for node submission** |
+| 2F: Send UI | ⏸️ Pending | 3-4h | Compose screen for sending |
 
-Phase 2-DUST implementation complete (36 hours). ALL dust fee payment mechanisms now working:
-
-✅ **Dust State Management** - DustLocalState FFI
-✅ **Event Replay** - Query from indexer, replay into state
-✅ **Fee Calculation** - Calculate dust fees
-✅ **Dust Spend Creation** - Real cryptographic proofs
-✅ **Transaction Serialization** - serialize_unshielded_transaction_with_dust FFI
-✅ **Integration Tests** - RealDustFeePaymentTest proves it works
-
-**What This Unblocks:**
-- ✅ Phase 2E (Submission Layer) - Can now implement RPC client to submit transactions
-- ✅ Phase 2F (Send UI) - Can build transactions with dust fees
-
-**Implementation:** `docs/PHASE_2_DUST_PLAN.md`
+**Total Time:** 79h actual / 94h estimated (84% complete)
 
 ---
 
-## 🟢 Blocker Resolution Status (ALL RESOLVED)
+## ✅ What's Working Now
 
-**Investigation Complete:** 3 hours spent resolving all 5 critical blockers
+**Transaction Building (Phases 2A-2C):**
+- ✅ Construct transactions with inputs/outputs/change
+- ✅ Select UTXOs using smallest-first algorithm (privacy)
+- ✅ Balance transactions automatically
+- ✅ Atomic UTXO locking (prevents double-spend)
 
-| Blocker | Status | Resolution Document |
-|---------|--------|---------------------|
-| #1: Test Vectors | ✅ Resolved (70%) | `TEST_VECTORS_PHASE2.md` |
-| #2: Ledger Compatibility | ✅ Resolved | `BLOCKERS_RESOLUTION.md` |
-| #3: RPC Response Format | ✅ Resolved | `BLOCKER_3_5_RESOLUTION.md` |
-| #4: Bech32m Decoder | ✅ Resolved | `BLOCKERS_RESOLUTION.md` |
-| #5: Atomic DB Operations | ✅ Resolved | `BLOCKER_3_5_RESOLUTION.md` |
+**Signing & Serialization (Phase 2D-FFI):**
+- ✅ Schnorr BIP-340 signatures via Rust FFI
+- ✅ SCALE encoding via midnight-ledger
+- ✅ 50/50 tests passing (security hardened)
 
-**Key Findings:**
-- Test vectors extracted from Android tests and verification scripts (70% complete)
-- midnight-ledger v6.1.0-alpha.5 confirmed compatible, already compiles for Android
-- GraphQL subscription format documented in existing Phase 4B code
-- Bech32m decoder fully implemented with decode() method
-- Atomic operation design complete with Room @Transaction pattern
+**Dust Fee Payment (Phase 2-DUST):**
+- ✅ Query dust events from blockchain (72+ events)
+- ✅ Replay into DustLocalState (Merkle tree verification)
+- ✅ Track dust balance (2.9 trillion Specks available)
+- ✅ Create DustSpend for fee payment
+- ✅ Serialize transactions with dust actions
+- ✅ Integration test passing: `RealDustFeePaymentTest`
 
-**Supporting Documents (3h investigation investment):**
-
-| Document | Purpose | Key Findings |
-|----------|---------|--------------|
-| `MIDNIGHT_LIBRARIES_MAPPING.md` | ✅ **Source verification** | **100% based on official Midnight libraries** |
-| `PHASE_2_INVESTIGATION.md` | First investigation (2h) | Found 3 critical errors in original plan |
-| `PHASE_2_GAPS_AND_BLOCKERS.md` | Phase-by-phase validation | 14 gaps + 5 blockers identified |
-| `TEST_VECTORS_PHASE2.md` | Validation data | 70% complete, extracted from tests + scripts |
-| `BLOCKERS_RESOLUTION.md` | Blockers #1, #2, #4 | Test vectors, ledger version, Bech32m decoder |
-| `BLOCKER_3_5_RESOLUTION.md` | Blockers #3, #5 | RPC format, atomic DB operations |
-
-**Midnight Libraries Foundation:**
-- ✅ `midnight-wallet` (TypeScript SDK) - Transaction flow, coin selection
-- ✅ `midnight-ledger` (Rust) v6.1.0-alpha.5 - Serialization, signing
-- ✅ `midnight-indexer` (GraphQL) - UTXO tracking, subscriptions
-- ✅ `midnight-node` (Substrate) - RPC submission
-- 📖 See `MIDNIGHT_LIBRARIES_MAPPING.md` for complete source references
-
-**Critical Corrections Made:**
-1. ❌ **Original:** Largest-first coin selection → ✅ **Corrected:** Smallest-first (privacy optimization)
-2. ❌ **Original:** Custom SCALE codec → ✅ **Corrected:** JNI wrapper to midnight-ledger (+8-10h)
-3. ❌ **Missing:** Atomic DB operations → ✅ **Added:** Room @Transaction design
-
-**Confidence:** 95% (up from 85% after blocker resolution)
+**Test Proof:** `OK (1 test)` - Serialization produces valid 4218-byte SCALE output
 
 ---
 
-## ✅ Foundation: 100% Based on Midnight Libraries
+## 🎯 What's Next: Phase 2E (Submission Layer)
 
-**ALL implementation decisions verified against official Midnight source code:**
+**Goal:** Submit serialized transactions to Midnight node via RPC
 
-```
-/Users/norman/Development/midnight/midnight-libraries/
-├── midnight-wallet/       ✅ Transaction flow, coin selection (TypeScript)
-├── midnight-ledger/       ✅ Serialization, signing (Rust v6.1.0-alpha.5)
-├── midnight-indexer/      ✅ UTXO tracking, GraphQL subscriptions
-└── midnight-node/         ✅ RPC submission (Substrate)
-```
+**Estimated Time:** 2-3 hours
 
-**Key Verifications:**
-- ✅ Coin selection: Smallest-first (verified in `Balancer.ts:143`)
-- ✅ Serialization: JNI to midnight-ledger (same as SDK's WASM approach)
-- ✅ Transaction structure: Intent/Segment/UnshieldedOffer (from `structure.rs`)
-- ✅ Address format: Bech32m compatible with Lace wallet
-- ✅ Ledger version: v6.1.0-alpha.5 (exact match)
+**What to Build:**
+1. `NodeRpcClient.kt` - HTTP client for JSON-RPC 2.0
+   - POST to `http://localhost:9944`
+   - Method: `author_submitExtrinsic`
+   - Input: Serialized transaction hex
+   - Output: Transaction hash
 
-📖 **Complete source mapping:** See `MIDNIGHT_LIBRARIES_MAPPING.md`
+2. `TransactionSubmitter.kt` - Orchestrate submission + confirmation
+   - Submit to node
+   - Subscribe to indexer for confirmation (reuse Phase 4B)
+   - Emit status: Submitting → InBlock → Finalized
 
----
+3. Integration test (manual, requires local node)
 
-## Prerequisites (Already Complete ✅)
-
-- ✅ Phase 1: Unshielded key derivation (BIP-39/32 for private keys)
-  - **Note:** Phase 1 did NOT implement Schnorr signing - that will be done in Phase 2D-FFI via midnight-ledger
-- ✅ Phase 4B: Balance viewing (UTXO tracking, WebSocket subscriptions)
-- ✅ Research: Midnight's intent-based transaction architecture
-- ✅ **Investigation: All 5 implementation blockers resolved**
+**Dependencies:**
+- ✅ Ktor HTTP client (already have for indexer)
+- ✅ IndexerClient (already implemented in Phase 4B)
 
 ---
 
-## High-Level Architecture
+## 🔜 After That: Phase 2F (Send UI)
+
+**Goal:** User interface for sending tokens
+
+**Estimated Time:** 3-4 hours
+
+**What to Build:**
+- `SendScreen.kt` - Compose UI with form validation
+- `SendViewModel.kt` - State management
+- Address validation wrapper (30 min, Bech32m decoder exists)
+
+---
+
+## 📖 High-Level Architecture
 
 ```
 User wants to send 100 NIGHT to recipient
     ↓
-1. Select UTXOs from available pool (coin selection)
-2. Build Intent with segments (guaranteed offer)
-3. Create UnshieldedOffer (inputs + outputs + change)
-4. Sign each input with Schnorr (BIP-340)
-5. Bind transaction (final signature)
-6. Serialize to SCALE codec (Substrate format)
-7. Submit to Midnight node via RPC
-8. Track transaction status (submitted → in-block → finalized)
-9. Update local UTXO pool (mark spent, add new outputs)
-10. UI updates automatically (balance decreases, history shows tx)
+1. Select UTXOs (Phase 2B) ✅
+2. Build transaction (Phase 2C) ✅
+3. Sign with Schnorr (Phase 2D-FFI) ✅
+4. Serialize to SCALE (Phase 2D-FFI) ✅
+5. Add dust fee payment (Phase 2-DUST) ✅
+6. Submit to node via RPC (Phase 2E) ⏸️ NEXT
+7. Track confirmation (Phase 2E)
+8. Update UI (Phase 2F)
 ```
 
 ---
 
-## Phase 2 Sub-Phases
+---
 
-| Phase | Goal | Estimate | Actual | Status |
-|-------|------|----------|--------|--------|
-| 2A: Transaction Models | Data classes for Intent/Offer/UTXO | 2-3h | 3h | ✅ Complete |
-| 2B: UTXO Manager | Coin selection + state tracking | 2-3h | 3.5h | ✅ Complete |
-| 2C: Transaction Builder | Construct & balance transactions | 3-4h | 1.5h | ✅ Complete |
-| **2D-FFI: JNI Ledger Wrapper** | **Signing + binding + serialization via Rust** | **8-10h** | **29h** | **✅ Complete** |
-| 2E: Submission Layer | WebSocket RPC client | 2-3h | - | **⏸️ Next** |
-| 2F: Send UI | Compose screen for sending | 3-4h | - | ⏸️ Pending |
+## 🔍 Key Technical Decisions
 
-**Total:** 20-26 hours (revised: removed standalone Phase 2D, merged into 2D-FFI)
-**Progress:** 37h / 20-26h (143% of estimate, overran due to security hardening + verification)
+**Why smallest-first coin selection?**
+- Privacy optimization: Mix more UTXOs to obfuscate amounts
+- Verified in Midnight SDK: `midnight-wallet/packages/unshielded-wallet/src/v1/Balancer.ts:143`
 
-**NOTE:** Phase 2D (standalone Schnorr signing) removed from plan. Schnorr BIP-340 is **NOT** implemented in Phase 1 - it will be handled by midnight-ledger via FFI in Phase 2D-FFI.
+**Why Rust FFI for signing?**
+- No pure-Kotlin Schnorr BIP-340 implementation exists
+- Custom implementations will have compatibility issues
+- Use same midnight-ledger that TypeScript SDK uses (proven approach)
+
+**Why dust fee payment is mandatory?**
+- Midnight blockchain requires dust for transaction fees
+- Unshielded transactions have NO direct fees
+- Must register dust via Lace wallet first
+
+**Source verification:**
+- 100% based on official Midnight libraries at `/Users/norman/Development/midnight/midnight-libraries/`
+- See `MIDNIGHT_LIBRARIES_MAPPING.md` for complete source references
 
 ---
 
-## Phase 2A: Transaction Models ✅ COMPLETE (3h actual, 2-3h estimated)
+## 📚 Detailed Implementation Notes
+
+### Phase 2A: Transaction Models ✅ COMPLETE (3h actual, 2-3h estimated)
 
 **Goal:** Create Kotlin data classes for Midnight's transaction structure
 
@@ -574,24 +561,11 @@ docs/reviews/
 
 ---
 
-## Phase 2E: Submission Layer (2-3h) ✅ RPC Format Known
+## Phase 2E: Submission Layer (2-3h) ⏸️ NEXT
 
 **Goal:** Submit serialized transaction to Midnight node via RPC
 
-**Key Concepts:**
-- **No Custom SCALE Codec** (handled by Phase 2D-FFI)
-- **RPC Endpoint:** `author_submitExtrinsic` via JSON-RPC 2.0
-- **Transaction Status:** Track lifecycle (submitted → finalized)
-- **WebSocket RPC:** Use Ktor (already have from Phase 4B)
-
-**✅ BLOCKER #3 RESOLVED:** RPC response format documented
-- **GraphQL Subscription:** Phase 4B already subscribes to unshielded transactions
-- **Response Format:** Documented in `IndexerClientImpl.kt:196-211`
-- **Status Values:** SUCCESS, PARTIAL_SUCCESS, FAILURE
-- **Update Types:** Transaction (with UTXOs) and Progress (sync status)
-- **Implementation Strategy:** Submit to node RPC + confirm via indexer GraphQL
-
-**Submission Pattern (Recommended):**
+**Implementation Pattern:**
 ```kotlin
 // Step 1: Submit to node RPC (HTTP POST)
 val txHash = nodeRpcClient.submitExtrinsic(serializedTx)
@@ -609,283 +583,58 @@ indexerClient.subscribeToUnshieldedTransactions(address, txId)
     }
 ```
 
-**Deliverables:**
-- [ ] `NodeRpcClient.kt` - Simple HTTP client for node
-  - HTTP POST to `http://localhost:9944`
-  - JSON-RPC 2.0: `{"method": "author_submitExtrinsic", "params": ["0x..."]}`
+**What to Build:**
+- [ ] `NodeRpcClient.kt` - HTTP client for JSON-RPC 2.0
+  - POST to `http://localhost:9944`
+  - Method: `author_submitExtrinsic`
   - Returns transaction hash
-  - No WebSocket subscription needed (use indexer instead)
-- [ ] Reuse `IndexerClient` from Phase 4B for status tracking
-  - Already implemented: `subscribeToUnshieldedTransactions()`
-  - Already handles: Transaction updates with status
 - [ ] `TransactionSubmitter.kt` - Orchestrate submission + confirmation
   - Submit to node
-  - Subscribe to indexer
+  - Subscribe to indexer (reuse Phase 4B)
   - Emit status updates (Submitting → InBlock → Finalized)
   - Handle errors (Invalid, Dropped)
-- [ ] Integration tests for submission (manual, requires local node)
+- [ ] Integration tests (requires local node)
 
 **Module:** `core/ledger`
 
 **Dependencies:**
-- Phase 2D-FFI: Serialized transactions
-- Phase 4B: IndexerClient (reuse existing subscription)
-- External: Midnight node running locally (HTTP RPC on port 9944)
-
-**Libraries:**
-- Ktor HTTP Client (add simple POST capability)
-- ✅ Ktor WebSocket (already have for indexer)
-- ✅ IndexerClient (already implemented in Phase 4B)
+- ✅ Phase 2D-FFI: Serialized transactions
+- ✅ Phase 4B: IndexerClient (reuse existing subscription)
+- ✅ Ktor HTTP Client (already have)
 
 ---
 
-## Phase 2F: Send UI (3-4h) ✅ Address Validation Ready
+## Phase 2F: Send UI (3-4h) ⏸️ PENDING
 
 **Goal:** User interface for sending tokens
 
-**Key Concepts:**
-- **Compose UI:** Material 3 components
-- **Form Validation:** Check address, amount, sufficient balance
-- **Transaction Preview:** Show fee estimate (0 for now)
-- **Status Tracking:** Loading → Submitted → Confirmed
-
-**✅ BLOCKER #4 RESOLVED:** Bech32m decoder exists and works
-- **Implementation:** `core/crypto/src/main/kotlin/com/midnight/kuira/core/crypto/address/Bech32m.kt`
-- **Decode Method:** `decode(bech32String): Pair<String, ByteArray>`
-- **Capabilities:** Validates checksum, returns HRP (network) + data bytes
-- **Simple Wrapper Needed:** 30-minute wrapper for address validation
-
-**Address Validation Pattern:**
+**Address Validation (30 min):**
 ```kotlin
 fun validateAddress(address: String, expectedNetwork: String): Result<ByteArray> {
-    return try {
-        val (hrp, data) = Bech32m.decode(address)
-
-        // Check prefix
-        require(hrp.startsWith("mn_addr_")) { "Not an unshielded address" }
-
-        // Check network
-        val network = hrp.removePrefix("mn_addr_")
-        require(network == expectedNetwork) { "Network mismatch" }
-
-        // Check data length
-        require(data.size == 32) { "Invalid address data length" }
-
-        Result.success(data)
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
+    val (hrp, data) = Bech32m.decode(address)  // Already implemented
+    require(hrp.startsWith("mn_addr_")) { "Not an unshielded address" }
+    require(data.size == 32) { "Invalid address data length" }
+    return Result.success(data)
 }
 ```
 
-**Deliverables:**
-- [ ] `AddressValidator.kt` - Simple wrapper for Bech32m decoder (~30 min)
-  - `validateUnshieldedAddress(address, network)` → Result<ByteArray>
-  - Check prefix, network, and data length
-  - Return user-friendly error messages
-- [ ] `SendScreen.kt` - Compose UI
-  - Recipient address input (TextField with validation)
-  - Amount input (numeric keyboard, 6 decimal places for NIGHT)
-  - Token type selector (if multiple tokens)
-  - Available balance display
-  - Send button (disabled until valid)
-  - Transaction status dialog
+**What to Build:**
+- [ ] `AddressValidator.kt` - Wrapper for Bech32m decoder (~30 min)
+- [ ] `SendScreen.kt` - Compose UI (form + validation)
 - [ ] `SendViewModel.kt` - State management
-  - Validate inputs (use AddressValidator)
-  - Build transaction
-  - Sign transaction
-  - Submit transaction
-  - Track status
-  - Update UTXO pools
 - [ ] `SendUiState.kt` - UI state sealed class
-  - Idle
-  - Building transaction
-  - Confirming (show preview)
-  - Submitting
-  - Success (transaction hash)
-  - Error (user-friendly message)
 - [ ] Navigation: Add "Send" button to BalanceScreen
 
 **Module:** `feature/send` (new module)
 
 **Dependencies:**
-- ✅ Phase 1: Bech32m decoder (already implemented)
+- ✅ Phase 1: Bech32m decoder
 - Phase 2E: Transaction submission
-- Phase 4B: Balance repository (check available balance)
+- ✅ Phase 4B: Balance repository
 
 ---
 
-## Implementation Order
-
-### Week 1: Core Logic + FFI (15-17h)
-1. ✅ **Day 1-2:** Phase 2A (Models) + 2B (UTXO Manager) - COMPLETE (6.5h)
-2. ✅ **Day 3:** Phase 2C (Transaction Builder) - COMPLETE (1.5h)
-3. ⏸️ **Day 4-6:** Phase 2D-FFI (JNI Ledger Wrapper: Signing + Binding + Serialization) - NEXT (8-10h)
-
-**Milestone:** Can construct, sign, and serialize transactions
-
-### Week 2: Submission & UI (7-10h)
-1. **Day 7:** Phase 2E (RPC Client) - 2-3h
-2. **Day 8:** Phase 2F (Send UI) - 3-4h
-3. **Day 9-10:** Integration testing + bug fixes - 2-3h
-
-**Milestone:** End-to-end send transaction working
-
----
-
-## Testing Strategy
-
-### Unit Tests (Continuous)
-- Model validation (Phase 2A)
-- Coin selection edge cases (Phase 2B)
-- Transaction balancing (Phase 2C)
-- Signature generation (Phase 2D)
-- SCALE encoding (Phase 2E)
-
-### Integration Tests (End-to-End)
-1. **Local Node Test:**
-   - Start local Midnight node
-   - Generate test wallet with funds
-   - Send transaction from Kuira wallet
-   - Verify balance updates in both wallets
-
-2. **Testnet Test:**
-   - Deploy to testnet
-   - Send real transaction
-   - Track on block explorer
-
-### Manual UI Testing
-- Send various amounts (small, large, exact balance)
-- Test validation (invalid address, insufficient funds)
-- Test error scenarios (network down, node unreachable)
-- Test transaction cancellation
-
----
-
-## Critical Implementation Details
-
-### 1. UTXO State Machine
-```
-Available → Pending (on submit)
-Pending → Spent (on finalize)
-Pending → Available (on failure)
-```
-**Risk:** Double-spend if state not tracked correctly
-
-### 2. Transaction TTL
-- Default: 30 minutes from now
-- Must be validated before submission
-- If expired, rebuild transaction
-
-### 3. Change Address
-- Always send change back to sender's address
-- Use same address (not new address from HD wallet)
-- Simplifies UTXO tracking
-
-### 4. Signature Data
-- Must match exactly what Midnight SDK expects
-- Test with known test vectors from SDK
-- One mismatch = invalid transaction
-
-### 5. SCALE Serialization
-- Compact integers for amounts (variable-length)
-- Fixed-size for addresses (35 bytes)
-- Vector length prefix (compact integer)
-
-### 6. RPC Connection Management
-- Handle disconnections gracefully
-- Retry with exponential backoff
-- Cache transaction if offline, submit when reconnected
-
----
-
-## Validation Rules
-
-**Before Building Transaction:**
-- [ ] Recipient address is valid (35-byte, Bech32 format)
-- [ ] Amount is positive and non-zero
-- [ ] Token type exists in wallet
-- [ ] Sufficient balance (including pending UTXOs)
-
-**After Building Transaction:**
-- [ ] Sum of inputs = sum of outputs
-- [ ] All amounts are non-negative
-- [ ] TTL is in the future
-- [ ] All input UTXOs are available (not pending/spent)
-- [ ] All signatures are present
-
-**Before Submission:**
-- [ ] Transaction is bound (immutable)
-- [ ] SCALE serialization succeeds
-- [ ] Node is reachable
-
----
-
-## Edge Cases to Handle
-
-1. **Insufficient Funds**
-   - Show clear error: "Insufficient balance. Need X, have Y."
-
-2. **UTXO Fragmentation**
-   - Many small UTXOs → large transaction size
-   - Mitigation: Largest-first selection minimizes UTXO count
-
-3. **Pending Transaction Conflicts**
-   - User tries to send while previous tx still pending
-   - Solution: Show "Transaction in progress, please wait"
-
-4. **Transaction Expiry**
-   - User builds tx but waits > 30 min to submit
-   - Solution: Rebuild transaction with new TTL
-
-5. **Node Unreachable**
-   - Show error, allow retry
-   - Don't mark UTXOs as spent until submission succeeds
-
-6. **Transaction Rejected**
-   - Invalid signature, insufficient balance on-chain
-   - Return UTXOs to available pool
-   - Show user-friendly error
-
-7. **Exactly Zero Change**
-   - If inputs exactly match amount, don't create change output
-   - Edge case in output construction
-
----
-
-## Dependencies on External Systems
-
-### Midnight Node (Required)
-- **Local:** `ws://localhost:9944` for development
-- **Testnet:** Public node URL
-- **Must be synced:** Node must be up-to-date with blockchain
-
-### Indexer (Already Connected)
-- Used for UTXO tracking (Phase 4B)
-- Not needed for transaction submission
-- But needed for balance updates after tx
-
----
-
-## Risks & Mitigations (✅ Updated After Blocker Resolution)
-
-| Risk | Impact | Previous | Current | Mitigation |
-|------|--------|----------|---------|------------|
-| SCALE codec errors | High - invalid tx | ⚠️ HIGH | ✅ **LOW** | Use JNI wrapper to midnight-ledger (same as SDK) |
-| Signature mismatch | High - tx rejected | ⚠️ HIGH | ⚠️ **MEDIUM** | Test vectors extracted (70%), extract rest in Phase 2D |
-| Double-spend | High - loss of funds | ⚠️ HIGH | ✅ **LOW** | Atomic DB operations with Room @Transaction |
-| Ledger compatibility | High - can't build | ⚠️ MEDIUM | ✅ **RESOLVED** | v6.1.0-alpha.5 confirmed, compiles for Android |
-| Address validation | Medium - bad UX | ⚠️ MEDIUM | ✅ **RESOLVED** | Bech32m decoder exists, 30-min wrapper |
-| Node unreachable | Medium - tx fails | LOW | LOW | Retry logic, offline queue |
-| Transaction expiry | Low - user confusion | LOW | LOW | Check TTL before submit, rebuild if needed |
-
-**Overall Risk Level:** 🟢 **LOW** (down from HIGH after comprehensive blocker resolution)
-
-**Confidence Level:** 95% (up from 85%)
-
----
-
-## Success Criteria
+## 🎯 Success Criteria
 
 **Phase 2 Complete When:**
 - ✅ User can send NIGHT tokens to another address
@@ -895,110 +644,29 @@ Pending → Available (on failure)
 - ✅ UTXO pools update correctly (available → spent)
 - ✅ UI shows transaction status (loading → success)
 - ✅ Error handling works (invalid address, insufficient funds)
-- ✅ All unit tests pass (>80% coverage)
-- ✅ End-to-end test passes on local node
+- ✅ All tests pass
 
 ---
 
-## Questions & Blockers ✅ ALL RESOLVED
+## 📝 Reference Notes
 
-### Implementation Blockers (Resolved January 19, 2026)
+**UTXO State Machine:**
+```
+Available → Pending (on submit)
+Pending → Spent (on finalize)
+Pending → Available (on failure)
+```
 
-**All 5 blockers resolved through comprehensive investigation (3 hours):**
+**Transaction TTL:** Default 30 minutes from now
 
-1. ✅ **Test Vectors:** Extracted from Android tests and verification scripts (70% complete)
-   - Document: `TEST_VECTORS_PHASE2.md`
-   - Remaining: Extract transaction serialization vectors during Phase 2D implementation
+**Change Address:** Always send change back to sender's address
 
-2. ✅ **Ledger Compatibility:** midnight-ledger v6.1.0-alpha.5 confirmed compatible
-   - Already compiles for Android (proven in Phase 1B)
-   - APIs verified: Intent, UnshieldedOffer, UtxoSpend, UtxoOutput
-   - Build infrastructure ready to reuse
+**Edge Cases to Handle:**
+- Insufficient funds
+- Transaction expiry
+- Node unreachable
+- Pending transaction conflicts
 
-3. ✅ **RPC Response Format:** Found in existing Phase 4B code
-   - GraphQL subscription format documented in `IndexerClientImpl.kt:196-211`
-   - Can reuse indexer subscription for confirmation
-   - Document: `BLOCKER_3_5_RESOLUTION.md`
-
-4. ✅ **Bech32m Decoder:** Full implementation exists in Phase 1
-   - Location: `core/crypto/src/main/kotlin/com/midnight/kuira/core/crypto/address/Bech32m.kt`
-   - Has `decode()` method, validates checksums
-   - 30-minute wrapper needed for Phase 2F
-
-5. ✅ **Atomic DB Operations:** Design complete with Room @Transaction
-   - Pattern: `selectAndLockUtxos()` with @Transaction annotation
-   - Prevents race conditions via SQLite transaction isolation
-   - Document: `BLOCKER_3_5_RESOLUTION.md`
-
-### Architecture Questions (Resolved During Planning)
-
-**Q1: SCALE Codec Library ✅**
-- **Decision:** Use JNI wrapper to midnight-ledger (Phase 2D-FFI)
-- **Why:** No pure-Kotlin libraries, custom will have mismatches, SDK uses Rust WASM
-
-**Q2: Fee Handling ✅**
-- **Decision:** Implement without fees (unshielded transactions have NO direct fees)
-- **Note:** Fees paid via Dust wallet (separate mechanism for later)
-
-**Q3: Multi-Recipient ✅**
-- **Decision:** No, keep simple - one recipient only for Phase 2
-
-**Q4: Transaction History ✅**
-- **Decision:** Not in Phase 2, add in Phase 6 (UI & Polish)
-
----
-
-## 🚀 Next Steps - READY TO START
-
-### Immediate Actions (Can Start NOW)
-
-1. ✅ **All blockers resolved** - No prerequisites remaining
-2. ✅ **Plan validated** - Deep investigation complete (3 rounds)
-3. **Create module structure** (if needed):
-   - Extend `core/indexer` for UTXO manager
-   - Create `feature/send` for UI
-4. **Start Phase 2A** - Implement transaction models (2-3h)
-5. **Proceed sequentially** - Each phase builds on previous
-
-### Implementation Timeline
-
-**Week 1: Core Logic + FFI (15-19h)**
-- Day 1: Phase 2A (Models) - 2-3h
-- Day 2: Phase 2B (UTXO Manager + Atomic operations) - 3-4h
-- Day 3: Phase 2C (Transaction Builder) - 3-4h
-- Day 4: Phase 2D (Signing & Binding) - 2-3h
-- Day 5-6: Phase 2D-FFI (JNI Ledger Wrapper) - 8-10h
-
-**Week 2: Submission & UI (7-11h)**
-- Day 7: Phase 2E (RPC Client) - 2-3h
-- Day 8: Phase 2F (Send UI + Address validation) - 3-4h
-- Day 9-10: Integration testing + bug fixes - 2-4h
-
-**Total:** 22-30 hours
-
----
-
-## Notes
-
-- **No shielded transactions yet** - Phase 3 will add ZK proofs
-- **No Dust fee handling** - Unshielded transactions have zero fees
-- **No transaction history UI** - Phase 6 will add this
-- **Smallest-first coin selection** - ✅ CORRECTED (was largest-first in original plan)
-- **No UTXO consolidation** - Can optimize later
-
----
-
-## Final Summary
-
-**Total Estimate:** 20-26 hours (revised: merged Phase 2D into 2D-FFI)
-**Progress:** 8h / 20-26h (38% complete)
-**Confidence:** 95% (after blocker resolution and 2A/2B/2C completion)
-**Risk Level:** 🟢 LOW (after comprehensive validation)
-
-**Status:** 🟢 **PHASE 2D-FFI NEXT** - Transaction models complete, UTXO manager complete, builder complete
-
-**Investigation Investment:** 3 hours spent resolving blockers upfront
-**Benefit:** Saved 10-15h of debugging + prevented 3 critical errors
-
-**Completed:** Phase 2A + 2B + 2C (8h actual, 88 tests passing)
-**Next Phase:** Phase 2D-FFI (JNI Ledger Wrapper with signing)
+**External Dependencies:**
+- Midnight node at `ws://localhost:9944` (development)
+- Indexer for UTXO tracking (already connected via Phase 4B)

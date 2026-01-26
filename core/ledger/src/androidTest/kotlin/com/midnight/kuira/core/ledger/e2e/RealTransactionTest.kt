@@ -7,6 +7,8 @@ import com.midnight.kuira.core.crypto.address.Bech32m
 import com.midnight.kuira.core.crypto.bip32.HDWallet
 import com.midnight.kuira.core.crypto.bip32.MidnightKeyRole
 import com.midnight.kuira.core.crypto.bip39.BIP39
+import com.midnight.kuira.core.crypto.dust.DustLocalState
+import com.midnight.kuira.core.indexer.api.IndexerClientImpl
 import com.midnight.kuira.core.indexer.database.UtxoDatabase
 import com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
 import com.midnight.kuira.core.ledger.api.NodeRpcClientImpl
@@ -61,21 +63,21 @@ class RealTransactionTest {
     private lateinit var database: UtxoDatabase
     private lateinit var wallet: HDWallet
     private lateinit var privateKey: ByteArray
+    private lateinit var seed: ByteArray
     private lateinit var recipientAddress: String  // Will be derived in setup
+    private var dustState: DustLocalState? = null
 
     companion object {
         /**
          * Test mnemonic matching the funded address.
          */
-        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
 
         /**
-         * FRESH FUNDED ADDRESS - Created with current node version!
-         * Derived at: m/44'/2400'/0'/0/3 from TEST_MNEMONIC (INDEX 3)
-         * This address was JUST funded with 5 NIGHT via TypeScript SDK
-         * UTXO: 00e28d3099efda8b36d6277c61f4ce062d52102898b1314c16bd28c9d905b59cd9:0
+         * FUNDED ADDRESS - Derived at m/44'/2400'/0'/0/0 from TEST_MNEMONIC (INDEX 0)
+         * This is the standard first address for the test wallet
          */
-        private const val FUNDED_ADDRESS = "mn_addr_undeployed1pu9g2hx5qnmsepujr204q936sz9h98lpf0npluxl2rxjw7qdw5lqdp492e"
+        private const val FUNDED_ADDRESS = "mn_addr_undeployed15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlsd2etrq"
 
         /**
          * Recipient address will be derived at: m/44'/2400'/0'/0/4 (INDEX 4)
@@ -97,9 +99,9 @@ class RealTransactionTest {
         /**
          * Amount to send in test transaction.
          * Note: check-balance uses different units (1 NIGHT = 1_000_000 in their notation)
-         * Our UTXO has 10,000,000 smallest units available.
+         * Our UTXO has 1,000,000 smallest units available (1 NIGHT).
          */
-        private val SEND_AMOUNT = BigInteger("1000000") // 1 NIGHT in check-balance notation
+        private val SEND_AMOUNT = BigInteger("500000") // 0.5 NIGHT (half of available balance)
 
         // Helper: Convert bytes to hex string
         private fun ByteArray.toHex(): String {
@@ -116,14 +118,28 @@ class RealTransactionTest {
         database = UtxoDatabase.getInstance(context)
 
         // Generate wallet from mnemonic
-        val seed = BIP39.mnemonicToSeed(TEST_MNEMONIC, passphrase = "")
+        var seed = BIP39.mnemonicToSeed(TEST_MNEMONIC, passphrase = "")
+
+        // ⚠️ LACE WALLET COMPATIBILITY: BIP39.mnemonicToSeed() returns 32 bytes (NOT 64)
+        // This matches Lace wallet convention. HDWallet.fromSeed() uses these 32 bytes.
         wallet = HDWallet.fromSeed(seed)
 
-        // Derive sender key at path m/44'/2400'/0'/0/3 (INDEX 3 - FRESH funded address!)
+        // Derive DUST key at m/44'/2400'/0'/2/0 (Role 2 = Dust, Index 0)
+        // Midnight SDK derives dust key at Roles.Dust (role 2), NOT NightExternal (role 0)
+        val dustDerivedKey = wallet
+            .selectAccount(0)
+            .selectRole(MidnightKeyRole.DUST)
+            .deriveKeyAt(0)
+
+        // Store dust seed for replaying events
+        seed = dustDerivedKey.privateKeyBytes.copyOf()
+        dustDerivedKey.clear()
+
+        // Derive sender key at path m/44'/2400'/0'/0/0 (INDEX 0 - standard first address)
         val senderDerivedKey = wallet
             .selectAccount(0)
             .selectRole(MidnightKeyRole.NIGHT_EXTERNAL)
-            .deriveKeyAt(3)  // ← INDEX 3 (fresh UTXO)
+            .deriveKeyAt(0)  // ← INDEX 0
 
         // Copy private key before clearing
         privateKey = senderDerivedKey.privateKeyBytes.copyOf()
@@ -131,12 +147,12 @@ class RealTransactionTest {
         // Clean up derived key
         senderDerivedKey.clear()
 
-        // Derive recipient address at path m/44'/2400'/0'/0/4 (INDEX 4 - fresh address)
-        // This is a fresh address that will receive the funds from index 3
+        // Derive recipient address at path m/44'/2400'/0'/0/1 (INDEX 1 - second address)
+        // This is a fresh address that will receive the funds from index 0
         val recipientDerivedKey = wallet
             .selectAccount(0)
             .selectRole(MidnightKeyRole.NIGHT_EXTERNAL)
-            .deriveKeyAt(4)  // ← INDEX 4 (fresh recipient)
+            .deriveKeyAt(1)  // ← INDEX 1 (recipient)
 
         // Get recipient's BIP-340 public key
         val recipientXOnlyPublicKey = TransactionSigner.getPublicKey(recipientDerivedKey.privateKeyBytes)
@@ -148,18 +164,52 @@ class RealTransactionTest {
 
         // Clean up recipient key (we don't need it after deriving address)
         recipientDerivedKey.clear()
-        seed.fill(0)
 
         println("✅ Wallet setup complete")
-        println("   Sender (index 3, FRESH UTXO):  $FUNDED_ADDRESS")
+        println("   Sender (index 0):  $FUNDED_ADDRESS")
         println("   Recipient (index 4, fresh):    $recipientAddress")
         println()
 
+        // Query and restore dust state (REQUIRED for transaction fees)
+        println("💰 Querying dust state from blockchain...")
+        val indexerClient = IndexerClientImpl(
+            baseUrl = "http://10.0.2.2:8088/api/v3",
+            developmentMode = true
+        )
+
+        try {
+            val eventsHex = indexerClient.queryDustEvents(maxBlocks = 100)
+
+            if (eventsHex.isEmpty()) {
+                println("⚠️  No dust events found - dust not registered yet")
+                println("   Transaction will fail without dust for fees")
+            } else {
+                println("   Retrieved ${eventsHex.length / 2} bytes of dust events")
+
+                val initialState = DustLocalState.create()
+                if (initialState != null) {
+                    val restoredState = initialState.replayEvents(seed, eventsHex)
+                    if (restoredState != null) {
+                        dustState = restoredState
+                        val balance = dustState!!.getBalance(System.currentTimeMillis())
+                        println("   ✅ Dust balance: $balance Specks")
+                        initialState.close()
+                    } else {
+                        println("   ⚠️  Failed to replay dust events")
+                        initialState.close()
+                    }
+                }
+            }
+        } finally {
+            indexerClient.close()
+        }
+        println()
+
         // Insert FRESH UTXO - Just created with current node version!
-        // This UTXO was JUST funded via TypeScript SDK: 00e28d3099efda8b36d6277c61f4ce062d52102898b1314c16bd28c9d905b59cd9
+        // This UTXO was JUST funded via TypeScript SDK
         // It belongs to Android-derived address (index 3), created seconds ago!
         println("📝 Inserting FRESH on-chain UTXO...")
-        val realIntentHash = "00e28d3099efda8b36d6277c61f4ce062d52102898b1314c16bd28c9d905b59cd9"
+        val realIntentHash = "00e28d3099efda8b36d6277c61f4ce062d52102898b1314c16bd28c9d905b59c"  // 32 bytes (64 hex chars)
 
         val realUtxo = com.midnight.kuira.core.indexer.database.UnshieldedUtxoEntity(
             id = "$realIntentHash:0",
@@ -187,6 +237,8 @@ class RealTransactionTest {
     fun teardown() {
         wallet.clear()
         privateKey.fill(0)
+        seed.fill(0)
+        dustState?.close()
         database.close()
         println("🧹 Test cleanup complete\n")
     }
@@ -194,10 +246,10 @@ class RealTransactionTest {
     @Test
     fun testRealOnChainTransaction() = runBlocking {
         println("\n🚀 Starting real on-chain transaction test...")
-        println("\n📝 NOTE: Using FRESH UTXO created with CURRENT node version!")
-        println("   Funded address (index 3): $FUNDED_ADDRESS (5 NIGHT)")
-        println("   Will send: 1 NIGHT to recipient (index 4)")
-        println("   🔥 This UTXO was created seconds ago - no version mismatch possible!")
+        println("\n📝 NOTE: Using UTXO from on-chain balance!")
+        println("   Funded address (index 0): $FUNDED_ADDRESS (1 NIGHT available)")
+        println("   Will send: 0.5 NIGHT to recipient (index 1)")
+        println("   Change: 0.5 NIGHT back to sender")
         println()
 
         // Step 1: Query real UTXOs from database
@@ -350,10 +402,40 @@ class RealTransactionTest {
             ttl = ttl  // CRITICAL: Use the SAME ttl as signing!
         )
 
-        // Step 7: Serialize to SCALE
-        println("\n📦 Step 7: Serializing to SCALE...")
+        // Step 7: Serialize to SCALE with dust fee payment
+        println("\n📦 Step 7: Serializing to SCALE with dust fee payment...")
 
-        val scaleHex = serializer.serialize(signedIntent)
+        // Check if we have dust UTXOs available
+        val hasDustUtxos = dustState?.let { state ->
+            val count = state.getUtxoCount()
+            val balance = state.getBalance(System.currentTimeMillis())
+            println("   Dust state: $count UTXOs, balance: $balance Specks")
+            count > 0
+        } ?: false
+
+        val scaleHex = if (hasDustUtxos) {
+            // Use dust fee payment (REQUIRED for all Midnight transactions)
+            println("   ✅ Using dust for transaction fees")
+
+            val dustUtxoSelections = """[{"utxo_index": 0, "v_fee": "1000"}]"""
+
+            serializer.serializeWithDust(
+                inputs = listOf(input),
+                outputs = listOf(paymentOutput, changeOutput),
+                signatures = listOf(signature),
+                dustState = dustState!!,
+                seed = seed,
+                dustUtxosJson = dustUtxoSelections,
+                ttl = ttl
+            )
+        } else {
+            // No dust available - transaction will likely fail
+            println("   ⚠️  WARNING: No dust UTXOs available! Transaction will fail")
+            println("   Register dust via Lace wallet first, or wait for dust to accumulate")
+            println("   Submitting WITHOUT dust (will be rejected by node)")
+
+            serializer.serialize(signedIntent)
+        }
 
         println("   ✅ SCALE serialized: ${scaleHex.length / 2} bytes")
         println("   SCALE hex: ${scaleHex.take(80)}...")
@@ -408,7 +490,7 @@ class RealTransactionTest {
 
         println("\n✅ Real transaction test complete!")
         println("\n📋 ADDRESSES FOR VERIFICATION:")
-        println("   Sender (index 1, should decrease):    $FUNDED_ADDRESS")
+        println("   Sender (index 0, should decrease):    $FUNDED_ADDRESS")
         println("   Recipient (index 2, should increase): $recipientAddress")
         println("   Amount transferred: $SEND_AMOUNT smallest units (1.0 NIGHT)")
         println()

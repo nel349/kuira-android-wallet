@@ -98,7 +98,7 @@ class FfiTransactionSerializer : TransactionSerializer {
      *
      * @param inputs Transaction inputs
      * @param outputs Transaction outputs
-     * @param signatures Hex-encoded signatures (one per input)
+     * @param signatures Signature ByteArrays (one per input, 64 bytes each)
      * @param dustState DustLocalState with available dust
      * @param seed 32-byte seed for deriving DustSecretKey
      * @param dustUtxosJson JSON array of {utxo_index, v_fee} selections
@@ -110,7 +110,7 @@ class FfiTransactionSerializer : TransactionSerializer {
     fun serializeWithDust(
         inputs: List<UtxoSpend>,
         outputs: List<UtxoOutput>,
-        signatures: List<String>,
+        signatures: List<ByteArray>,
         dustState: com.midnight.kuira.core.crypto.dust.DustLocalState,
         seed: ByteArray,
         dustUtxosJson: String,
@@ -128,12 +128,22 @@ class FfiTransactionSerializer : TransactionSerializer {
         val outputsJson = serializeOutputsToJson(outputs)
         val signaturesJson = serializeSignaturesToJson(signatures)
 
+        // DEBUG: Log parameters
+        println("[serializeWithDust] Calling FFI with:")
+        println("   - Inputs: ${inputs.size}")
+        println("   - Outputs: ${outputs.size}")
+        println("   - Signatures: ${signatures.size}")
+        println("   - Dust UTXOs JSON: $dustUtxosJson")
+        println("   - Seed size: ${seed.size} bytes")
+        println("   - Binding commitment: ${commitment.take(32)}...")
+        println("   - Dust state pointer: ${dustState.getStatePointer()}")
+
         // Call Rust FFI with dust
         val hexResult = nativeSerializeTransactionWithDust(
             inputsJson,
             outputsJson,
             signaturesJson,
-            dustState.nativePtr,
+            dustState.getStatePointer(),
             seed,
             dustUtxosJson,
             System.currentTimeMillis(),
@@ -145,45 +155,6 @@ class FfiTransactionSerializer : TransactionSerializer {
         bindingCommitment = null
 
         return hexResult
-    }
-
-    /**
-     * Get signing message for a specific input (required before signing).
-     *
-     * This function generates the message that must be signed for the given input.
-     * It also stores the binding_commitment internally for later use in serialize().
-     *
-     * @param inputs Transaction inputs (WITHOUT signatures)
-     * @param outputs Transaction outputs
-     * @param inputIndex Which input to generate signature for (0-based)
-     * @param ttl Transaction time-to-live (milliseconds)
-     * @return Hex-encoded signing message
-     */
-    fun getSigningMessageForInput(
-        inputs: List<UtxoSpend>,
-        outputs: List<UtxoOutput>,
-        inputIndex: Int,
-        ttl: Long
-    ): String {
-        require(inputIndex >= 0 && inputIndex < inputs.size) {
-            "inputIndex $inputIndex out of bounds [0, ${inputs.size})"
-        }
-
-        val inputsJson = serializeInputsToJson(inputs)
-        val outputsJson = serializeOutputsToJson(outputs)
-
-        val result = nativeGetSigningMessageForInput(inputsJson, outputsJson, inputIndex, ttl)
-            ?: throw IllegalStateException("Failed to get signing message for input $inputIndex")
-
-        // Parse result: "binding_commitment_hex|signing_message_hex"
-        val parts = result.split("|")
-        require(parts.size == 2) { "Invalid signing message format" }
-
-        // Store binding_commitment for later use in serialize()
-        bindingCommitment = parts[0]
-
-        // Return signing message
-        return parts[1]
     }
 
     /**

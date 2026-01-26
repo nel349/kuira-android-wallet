@@ -39,20 +39,14 @@ class FfiTransactionSerializerIntegrationTest {
          * Test mnemonic from Phase 1 crypto tests.
          * Path m/44'/2400'/0'/0/0 produces consistent addresses.
          */
-        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        private const val TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
 
         /**
          * Test addresses (Bech32m encoded for undeployed/local network).
          * Sender: From "abandon abandon...art" mnemonic at m/44'/2400'/0'/0/0
          * Recipient: Valid Bech32m encoding of 32 zero bytes (for testing)
          */
-        // Generate sender address with undeployed prefix
-        // Decode the preview address to get the UserAddress bytes, then re-encode for undeployed
-        private val SENDER_ADDRESS by lazy {
-            val previewAddress = "mn_addr_preview15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlshsa9pv"
-            val (_, addressData) = com.midnight.kuira.core.crypto.address.Bech32m.decode(previewAddress)
-            com.midnight.kuira.core.crypto.address.Bech32m.encode("mn_addr_undeployed", addressData)
-        }
+        private const val SENDER_ADDRESS = "mn_addr_undeployed15jlkezafp4mju3v7cdh3ywre2y2s3szgpqrkw8p4tzxjqhuaqhlsd2etrq"
 
         // Generate a valid recipient address (32 zero bytes encoded as Bech32m)
         private val RECIPIENT_ADDRESS by lazy {
