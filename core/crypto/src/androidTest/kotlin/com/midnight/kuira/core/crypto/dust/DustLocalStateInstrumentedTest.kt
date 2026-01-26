@@ -481,4 +481,83 @@ class DustLocalStateInstrumentedTest {
         state2.close()
         state3.close()
     }
+
+    // ==================== State Persistence (Serialize/Deserialize) ====================
+
+    @Test
+    fun deserializeStateRoundTrip() {
+        // Test Goal: Verify serialize → deserialize produces identical state
+        // This is critical for wallet persistence (save/load from database)
+
+        // Given - Create state
+        val originalState = DustLocalState.create()
+        assertNotNull("State should be created", originalState)
+
+        try {
+            // Get baseline values
+            val originalBalance = originalState!!.getBalance(System.currentTimeMillis())
+            val originalCount = originalState.getUtxoCount()
+
+            // When - Serialize
+            val serialized = originalState.serialize()
+            assertNotNull("Serialization should succeed", serialized)
+            assertTrue("Serialized data should not be empty", serialized!!.isNotEmpty())
+
+            println("Serialized state: ${serialized.size} bytes")
+
+            // When - Deserialize
+            val deserializedState = DustLocalState.deserialize(serialized)
+            assertNotNull("Deserialization should succeed", deserializedState)
+
+            try {
+                // Then - Deserialized state should match original
+                val deserializedBalance = deserializedState!!.getBalance(System.currentTimeMillis())
+                val deserializedCount = deserializedState.getUtxoCount()
+
+                assertEquals(
+                    "Deserialized balance should match original",
+                    originalBalance,
+                    deserializedBalance
+                )
+
+                assertEquals(
+                    "Deserialized UTXO count should match original",
+                    originalCount,
+                    deserializedCount
+                )
+
+                println("✅ Round-trip serialization successful!")
+                println("   Balance: $originalBalance Specks")
+                println("   UTXO count: $originalCount")
+            } finally {
+                deserializedState?.close()
+            }
+        } finally {
+            originalState?.close()
+        }
+    }
+
+    @Test
+    fun deserializeStateWithNullDataReturnsNull() {
+        // Given - Empty byte array
+        val emptyData = ByteArray(0)
+
+        // When - Try to deserialize
+        val state = DustLocalState.deserialize(emptyData)
+
+        // Then - Should return null
+        assertNull("Deserialization of empty data should return null", state)
+    }
+
+    @Test
+    fun deserializeStateWithInvalidDataReturnsNull() {
+        // Given - Invalid SCALE-encoded data
+        val invalidData = ByteArray(10) { 0xFF.toByte() }
+
+        // When - Try to deserialize
+        val state = DustLocalState.deserialize(invalidData)
+
+        // Then - Should return null (graceful error handling)
+        assertNull("Deserialization of invalid data should return null", state)
+    }
 }

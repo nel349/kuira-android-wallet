@@ -24,6 +24,18 @@ import javax.annotation.concurrent.ThreadSafe
  * - Spending history
  * - Balance calculations
  *
+ * **Value Units (IMPORTANT):**
+ * The Midnight dust system uses different units for different purposes:
+ * - **Specks:** Smallest dust unit (balance, initial_value)
+ *   - 1 Dust = 1,000,000 Specks
+ *   - Used for dust token values and balances
+ * - **Stars:** Night (native token) unit
+ *   - 1 NIGHT = 1,000,000 Stars
+ *   - Used for backing Night UTXO values that generate dust
+ * - **Dust vs Night:** These are DIFFERENT tokens with DIFFERENT units!
+ *   - Dust is generated FROM Night tokens over time
+ *   - Dust is used to pay transaction fees
+ *
  * **Thread Safety:**
  * This class is NOT thread-safe. Do not share instances across threads.
  * Each thread should create its own instance or use external synchronization.
@@ -171,8 +183,61 @@ class DustLocalState private constructor(
             return DustLocalState(ptr)
         }
 
+        /**
+         * Deserializes a DustLocalState from previously serialized bytes.
+         *
+         * **Usage:**
+         * ```kotlin
+         * // Load from database
+         * val serialized = database.loadDustState()
+         *
+         * // Deserialize
+         * val state = DustLocalState.deserialize(serialized)
+         * if (state != null) {
+         *     try {
+         *         val balance = state.getBalance(System.currentTimeMillis())
+         *         println("Loaded balance: $balance Specks")
+         *     } finally {
+         *         state.close()
+         *     }
+         * }
+         * ```
+         *
+         * **Error Handling:**
+         * Returns null if:
+         * - Native library not loaded
+         * - Data is empty
+         * - Data is corrupted/invalid
+         * - Deserialization fails
+         *
+         * **Important:** The returned instance MUST be closed when done to prevent memory leaks.
+         *
+         * @param data Serialized DustLocalState bytes (from serialize())
+         * @return DustLocalState instance, or null on error
+         */
+        fun deserialize(data: ByteArray): DustLocalState? {
+            if (!isNativeLibraryLoaded) {
+                logError("Cannot deserialize dust state - native library not loaded: $nativeLibraryError")
+                return null
+            }
+
+            if (data.isEmpty()) {
+                logError("Cannot deserialize empty data")
+                return null
+            }
+
+            val ptr = nativeDeserializeDustState(data)
+            if (ptr == 0L) {
+                logError("Deserialization failed - native function returned null pointer")
+                return null
+            }
+
+            return DustLocalState(ptr)
+        }
+
         /* Native functions */
         private external fun nativeCreateDustLocalState(): Long
+        private external fun nativeDeserializeDustState(data: ByteArray): Long
     }
 
     /**
@@ -241,6 +306,85 @@ class DustLocalState private constructor(
     fun serialize(): ByteArray? {
         checkNotClosed()
         return nativeSerializeDustState(nativePtr)
+    }
+
+    /**
+     * Replays blockchain events into this DustLocalState to sync wallet state.
+     *
+     * **What is Event Replay?**
+     * When DustRegistration transactions are applied to the blockchain, the ledger
+     * emits events (DustInitialUtxo, DustSpendProcessed, etc.). Replaying these
+     * events into DustLocalState syncs the wallet with the blockchain.
+     *
+     * **Event Flow:**
+     * 1. Submit DustRegistration transaction to blockchain
+     * 2. Blockchain emits DustInitialUtxo event
+     * 3. Call `replayEvents()` with these events
+     * 4. DustLocalState now tracks the new dust UTXO
+     * 5. Balance increases as dust accumulates over time
+     *
+     * **Event Format:**
+     * Events must be SCALE-encoded as `Vec<Event<InMemoryDB>>` from midnight-ledger,
+     * then hex-encoded. This matches how events are transmitted from the blockchain.
+     *
+     * **Usage:**
+     * ```kotlin
+     * val state = DustLocalState.create()!!
+     * try {
+     *     // Get events from blockchain (hex-encoded SCALE bytes)
+     *     val eventsHex = "0x..." // From blockchain indexer
+     *
+     *     // Replay events to sync wallet
+     *     val newState = state.replayEvents(seed, eventsHex)
+     *
+     *     if (newState != null) {
+     *         // Use new state (old state is now invalid)
+     *         state.close()
+     *
+     *         // Check new balance
+     *         val balance = newState.getBalance(System.currentTimeMillis())
+     *         println("New balance: $balance Specks")
+     *
+     *         newState.close()
+     *     }
+     * } finally {
+     *     if (!state.isClosed()) state.close()
+     * }
+     * ```
+     *
+     * **Important:**
+     * - This method returns a NEW DustLocalState instance
+     * - The old state (this instance) becomes invalid after replay
+     * - You MUST close both the old state and the new state
+     * - Events are immutable - replay returns a new state rather than mutating
+     *
+     * **Error Handling:**
+     * Returns null if:
+     * - State is closed
+     * - Seed is invalid (not 32 bytes)
+     * - Events hex is malformed
+     * - Event deserialization fails
+     * - Event replay fails (e.g., non-linear insertion)
+     *
+     * @param seed 32-byte seed for deriving DustSecretKey (must match wallet)
+     * @param eventsHex Hex-encoded SCALE-serialized events from blockchain
+     * @return New DustLocalState with events applied, or null on error
+     */
+    fun replayEvents(seed: ByteArray, eventsHex: String): DustLocalState? {
+        checkNotClosed()
+
+        if (seed.size != 32) {
+            logError("Seed must be 32 bytes, got ${seed.size}")
+            return null
+        }
+
+        val newPtr = nativeDustReplayEvents(nativePtr, seed, eventsHex)
+        if (newPtr == 0L) {
+            logError("Event replay failed")
+            return null
+        }
+
+        return DustLocalState(newPtr)
     }
 
     /**
@@ -445,4 +589,18 @@ class DustLocalState private constructor(
      * @return Hex-encoded serialized UTXO, or null if out of bounds
      */
     private external fun nativeDustGetUtxoAt(statePtr: Long, index: Int): String?
+
+    /**
+     * Replays blockchain events into DustLocalState via FFI.
+     *
+     * @param statePtr Native pointer to DustLocalState
+     * @param seed 32-byte seed for deriving DustSecretKey
+     * @param eventsHex Hex-encoded SCALE-serialized events
+     * @return Pointer to new DustLocalState with events applied, or 0 on error
+     */
+    private external fun nativeDustReplayEvents(
+        statePtr: Long,
+        seed: ByteArray,
+        eventsHex: String
+    ): Long
 }
