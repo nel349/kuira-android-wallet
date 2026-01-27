@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.google.hilt)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -58,8 +60,9 @@ dependencies {
     // Kotlinx Serialization for JSON
     implementation(libs.kotlinx.serialization.json)
 
-    // Dependency Injection
-    implementation("javax.inject:javax.inject:1")
+    // Hilt for dependency injection
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
 
     // Crypto module (for TransactionSigner native library)
     implementation(project(":core:crypto"))

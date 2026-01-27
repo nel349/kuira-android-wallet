@@ -91,10 +91,16 @@ class UnshieldedTransactionBuilder(
      * If transaction building succeeds but later fails (signing/submission),
      * call `utxoManager.unlockUtxos()` to release them.
      *
+     * **Public Key Derivation:**
+     * The indexer doesn't provide public keys for UTXOs (security/privacy).
+     * The caller must derive the public key from the HD wallet before calling this method.
+     * This matches Lace wallet's architecture.
+     *
      * @param from Sender's unshielded address
      * @param to Recipient's unshielded address
      * @param amount Amount to send (in smallest units)
      * @param tokenType Token type identifier (64 hex chars)
+     * @param senderPublicKey Sender's BIP-340 public key (33 bytes hex)
      * @param ttlMinutes Transaction time-to-live in minutes (default 30)
      * @return BuildResult.Success with Intent, or BuildResult.InsufficientFunds
      */
@@ -103,6 +109,7 @@ class UnshieldedTransactionBuilder(
         to: String,
         amount: BigInteger,
         tokenType: String,
+        senderPublicKey: String,
         ttlMinutes: Int = DEFAULT_TTL_MINUTES
     ): BuildResult {
         // Step 1: Validate inputs
@@ -110,6 +117,8 @@ class UnshieldedTransactionBuilder(
         require(to.isNotBlank()) { "Recipient address cannot be blank" }
         require(amount > BigInteger.ZERO) { "Amount must be positive, got: $amount" }
         require(tokenType.isNotBlank()) { "Token type cannot be blank" }
+        require(senderPublicKey.isNotBlank()) { "Sender public key cannot be blank" }
+        require(senderPublicKey.length == 64) { "Sender public key must be 64 hex chars (32 bytes BIP-340 x-only), got: ${senderPublicKey.length}" }
         require(ttlMinutes > 0) { "TTL minutes must be positive, got: $ttlMinutes" }
 
         // Step 2: Select and lock UTXOs
@@ -131,8 +140,9 @@ class UnshieldedTransactionBuilder(
         val success = selectionResult as UtxoSelector.SelectionResult.Success
 
         // Step 3: Convert selected UTXOs to UtxoSpend inputs
+        // Note: We use the derived public key from HD wallet, not from database
         val inputs = success.selectedUtxos.map { utxo ->
-            utxo.toUtxoSpend()
+            utxo.toUtxoSpend(senderPublicKey)
         }
 
         // Step 4: Create recipient output
@@ -220,20 +230,20 @@ class UnshieldedTransactionBuilder(
  * Convert UnshieldedUtxoEntity (database model) to UtxoSpend (ledger model).
  *
  * Maps database fields to transaction input fields.
- * Requires ownerPublicKey to be set (UTXOs from our wallet must have public key).
+ *
+ * **Important:** The indexer doesn't provide public keys for privacy/security.
+ * The public key must be derived from the HD wallet when spending UTXOs.
+ * This matches Lace wallet's architecture.
+ *
+ * @param ownerPublicKey The BIP-340 public key derived from HD wallet (33 bytes hex)
  */
-private fun UnshieldedUtxoEntity.toUtxoSpend(): UtxoSpend {
-    val publicKey = requireNotNull(this.ownerPublicKey) {
-        "Cannot spend UTXO without public key. UTXO ${this.id} from address ${this.owner} is missing ownerPublicKey. " +
-        "This UTXO may not belong to this wallet."
-    }
-
+private fun UnshieldedUtxoEntity.toUtxoSpend(ownerPublicKey: String): UtxoSpend {
     return UtxoSpend(
         intentHash = this.intentHash,
         outputNo = this.outputIndex,
         value = BigInteger(this.value),
         owner = this.owner,
-        ownerPublicKey = publicKey,
+        ownerPublicKey = ownerPublicKey,
         tokenType = this.tokenType
     )
 }

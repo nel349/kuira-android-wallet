@@ -6,7 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
-import com.midnight.kuira.feature.balance.BalanceScreen
+import com.midnight.kuira.navigation.AppNavigation
 import com.midnight.kuira.ui.theme.KuiraTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -14,12 +14,11 @@ import dagger.hilt.android.AndroidEntryPoint
  * Main entry point for Kuira Wallet.
  *
  * **Current Implementation:**
- * Simple integration test UI for proving live balance updates work.
+ * Phase 2F MVP - Balance viewing and send transactions.
  *
- * **Test Flow:**
- * 1. Display BalanceScreen with editable address input
- * 2. User sends transaction via external Midnight SDK script
- * 3. WebSocket receives update → Database → Flow → UI updates automatically
+ * **Navigation:**
+ * - Balance Screen (default): View wallet balance
+ * - Send Screen: Send NIGHT transactions
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -29,7 +28,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             KuiraTheme {
-                BalanceScreen()
+                AppNavigation()
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.midnight.kuira.core.ledger.api
 
+import android.util.Log
 import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
 import com.midnight.kuira.core.ledger.fee.DustActionsBuilder
@@ -203,11 +204,16 @@ class TransactionSubmitter(
         val serializedHex = try {
             serializer.serialize(signedIntent)
         } catch (e: Exception) {
+            Log.e(TAG, "Serialization failed", e)
             return SubmissionResult.Failed(
                 txHash = null,
                 reason = "Serialization failed: ${e.message}"
             )
         }
+
+        Log.d(TAG, "Serialized transaction: ${serializedHex.length} hex chars")
+        Log.d(TAG, "Ledger params: ${ledgerParamsHex.length} hex chars")
+        Log.d(TAG, "Transaction hex prefix: ${serializedHex.take(100)}")
 
         // Step 2: Build dust actions for fee payment
         val dustActions = try {
@@ -218,6 +224,7 @@ class TransactionSubmitter(
                 seed = seed
             )
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to build dust actions", e)
             return SubmissionResult.Failed(
                 txHash = null,
                 reason = "Failed to build dust actions: ${e.message}"
@@ -322,6 +329,8 @@ class TransactionSubmitter(
     }
 
     companion object {
+        private const val TAG = "TransactionSubmitter"
+
         /**
          * Default timeout for waiting for transaction finalization: 60 seconds.
          *

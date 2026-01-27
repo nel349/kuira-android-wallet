@@ -1,0 +1,430 @@
+package com.midnight.kuira.feature.send
+
+import android.os.Build
+import android.util.Log
+import androidx.annotation.RequiresApi
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.midnight.kuira.core.crypto.bip32.HDWallet
+import com.midnight.kuira.core.crypto.bip32.MidnightKeyRole
+import com.midnight.kuira.core.crypto.bip39.BIP39
+import com.midnight.kuira.core.indexer.model.TokenTypeMapper
+import com.midnight.kuira.core.indexer.repository.BalanceRepository
+import com.midnight.kuira.core.indexer.utxo.UtxoManager
+import com.midnight.kuira.core.ledger.api.TransactionSerializer
+import com.midnight.kuira.core.ledger.api.TransactionSubmitter
+import com.midnight.kuira.core.ledger.builder.UnshieldedTransactionBuilder
+import com.midnight.kuira.core.ledger.model.Intent
+import com.midnight.kuira.core.ledger.model.UnshieldedOffer
+import com.midnight.kuira.core.ledger.model.UtxoOutput
+import com.midnight.kuira.core.ledger.signer.TransactionSigner
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
+import java.math.BigInteger
+import javax.inject.Inject
+
+/**
+ * ViewModel for send transaction screen.
+ *
+ * **Responsibilities:**
+ * - Load available balance
+ * - Validate recipient address
+ * - Build, sign, and submit transactions
+ * - Handle transaction states (building, signing, submitting)
+ * - Display success or error
+ *
+ * **Transaction Flow:**
+ * 1. Build: UnshieldedTransactionBuilder creates unsigned Intent
+ * 2. Sign: For each input, get signing message and sign with private key
+ * 3. Submit: TransactionSubmitter handles dust fees and submission
+ *
+ * **MVP Note:**
+ * This is a simple MVP implementation. For production, we need:
+ * - Secure wallet state management (not exposing seed in UI)
+ * - Biometric authentication for signing
+ * - Encrypted storage for seed phrase
+ * - Better error recovery
+ *
+ * **Usage:**
+ * ```kotlin
+ * @Composable
+ * fun SendScreen(viewModel: SendViewModel = hiltViewModel()) {
+ *     val state by viewModel.state.collectAsState()
+ *
+ *     when (state) {
+ *         is SendUiState.Idle -> ShowSendForm()
+ *         is SendUiState.Building -> ShowLoading("Building...")
+ *         is SendUiState.Success -> ShowSuccess(state.txHash)
+ *         // ...
+ *     }
+ * }
+ * ```
+ */
+@RequiresApi(Build.VERSION_CODES.O)
+@HiltViewModel
+class SendViewModel @Inject constructor(
+    private val balanceRepository: BalanceRepository,
+    private val utxoManager: UtxoManager,
+    private val transactionSubmitter: TransactionSubmitter,
+    private val serializer: TransactionSerializer,
+    private val indexerClient: com.midnight.kuira.core.indexer.api.IndexerClient
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<SendUiState>(SendUiState.Idle())
+    val state: StateFlow<SendUiState> = _state.asStateFlow()
+
+    /**
+     * Load available balance for sender address.
+     *
+     * **Purpose:**
+     * - Show user how much they can send
+     * - Enable/disable send button based on balance
+     *
+     * @param address Sender's address
+     */
+    fun loadBalance(address: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "loadBalance called with address: '$address'")
+
+                // Validate address is not blank
+                if (address.isBlank()) {
+                    Log.e(TAG, "Address is blank!")
+                    _state.value = SendUiState.Error("Address cannot be empty")
+                    return@launch
+                }
+
+                // Validate address format
+                val validation = AddressValidator.validate(address)
+                if (validation is AddressValidator.ValidationResult.Invalid) {
+                    Log.e(TAG, "Address validation failed: ${validation.reason}")
+                    _state.value = SendUiState.Error(validation.reason)
+                    return@launch
+                }
+
+                Log.d(TAG, "Address validated, querying database...")
+
+                // Get current balances from database
+                // Note: Take first emission (current snapshot) - no need for continuous updates
+                val balances = balanceRepository.observeBalances(address).firstOrNull() ?: emptyList()
+
+                Log.d(TAG, "Database returned ${balances.size} balance records")
+                balances.forEach { balance ->
+                    Log.d(TAG, "  TokenType: ${balance.tokenType}, Balance: ${balance.balance}, UTXOs: ${balance.utxoCount}")
+                }
+
+                // Calculate total NIGHT balance
+                // Note: TokenBalance uses display symbols from TokenTypeMapper, not hex token types
+                val nightBalances = balances.filter { it.tokenType == TokenTypeMapper.NIGHT_SYMBOL }
+                Log.d(TAG, "Found ${nightBalances.size} NIGHT token records")
+
+                val totalBalance = nightBalances.fold(BigInteger.ZERO) { acc, balance -> acc + balance.balance }
+
+                Log.d(TAG, "FINAL: Total balance = $totalBalance Stars")
+                _state.value = SendUiState.Idle(availableBalance = totalBalance)
+            } catch (e: Exception) {
+                // Log the full error for debugging
+                Log.e(TAG, "Failed to load balance for address: $address", e)
+
+                _state.value = SendUiState.Error(
+                    message = getUserFriendlyError(e),
+                    throwable = e
+                )
+            }
+        }
+    }
+
+    /**
+     * Send transaction.
+     *
+     * **Process:**
+     * 1. Validate inputs
+     * 2. Fetch current ledger parameters from indexer
+     * 3. Build unsigned transaction
+     * 4. Sign transaction with user's private key
+     * 5. Submit with automatic dust fee payment
+     * 6. Wait for confirmation
+     *
+     * **Parameters:**
+     * @param fromAddress Sender's address
+     * @param toAddress Recipient's address
+     * @param amount Amount to send (in smallest units - Stars)
+     * @param seedPhrase User's 24-word mnemonic (for signing)
+     *
+     * **Security Warning:**
+     * This MVP exposes seed phrase in parameters. Production implementation
+     * must use secure storage (Android Keystore) and biometric auth.
+     *
+     * **Note:**
+     * Ledger parameters are fetched automatically from the indexer.
+     * No manual input required!
+     */
+    fun sendTransaction(
+        fromAddress: String,
+        toAddress: String,
+        amount: BigInteger,
+        seedPhrase: String
+    ) {
+        viewModelScope.launch {
+            // CRITICAL SECURITY: Derive keys once and wipe in finally block
+            var seed: ByteArray? = null
+            var hdWallet: HDWallet? = null
+            var derivedKey: com.midnight.kuira.core.crypto.bip32.DerivedKey? = null
+
+            try {
+                // Step 1: Validate inputs
+                _state.value = SendUiState.Building
+
+                // Validate amount
+                if (amount <= BigInteger.ZERO) {
+                    _state.value = SendUiState.Error("Amount must be greater than zero")
+                    return@launch
+                }
+
+                // Validate recipient address
+                val validationResult = AddressValidator.validate(toAddress)
+                if (validationResult is AddressValidator.ValidationResult.Invalid) {
+                    _state.value = SendUiState.Error(validationResult.reason)
+                    return@launch
+                }
+
+                // Step 2: Derive keys from HD wallet (ONCE for all operations)
+                seed = BIP39.mnemonicToSeed(seedPhrase)
+                hdWallet = HDWallet.fromSeed(seed)
+                derivedKey = hdWallet
+                    .selectAccount(0)
+                    .selectRole(MidnightKeyRole.NIGHT_EXTERNAL)
+                    .deriveKeyAt(0)
+
+                // BIP-340 requires x-only public key (32 bytes), not compressed key (33 bytes)
+                // Strip the first byte (compression prefix) to get x-only key
+                val fullPublicKeyHex = derivedKey.publicKeyHex()
+                val senderPublicKey = if (fullPublicKeyHex.length == 66) {
+                    fullPublicKeyHex.substring(2)  // Remove first byte (prefix)
+                } else {
+                    fullPublicKeyHex
+                }
+
+                Log.d(TAG, "Derived public key: ${fullPublicKeyHex.length} hex chars (full), ${senderPublicKey.length} hex chars (x-only)")
+
+                val privateKey = derivedKey.privateKeyBytes
+
+                // Step 3: Build unsigned transaction
+                Log.d(TAG, "Building transaction: from=$fromAddress, to=$toAddress, amount=$amount")
+                val builder = UnshieldedTransactionBuilder(utxoManager)
+                val buildResult = builder.buildTransfer(
+                    from = fromAddress,
+                    to = toAddress,
+                    amount = amount,
+                    tokenType = UtxoOutput.NATIVE_TOKEN_TYPE,
+                    senderPublicKey = senderPublicKey
+                )
+
+                // Handle insufficient funds
+                if (buildResult is UnshieldedTransactionBuilder.BuildResult.InsufficientFunds) {
+                    Log.e(TAG, "Insufficient funds: required=${buildResult.required}, available=${buildResult.available}")
+                    _state.value = SendUiState.Error(
+                        message = "Insufficient funds. Need ${buildResult.required}, have ${buildResult.available}"
+                    )
+                    return@launch
+                }
+
+                val success = buildResult as UnshieldedTransactionBuilder.BuildResult.Success
+                val unsignedIntent = success.intent
+                Log.d(TAG, "Transaction built successfully with ${success.lockedUtxos.size} UTXOs")
+
+                // Step 4: Fetch ledger parameters from indexer
+                Log.d(TAG, "Fetching ledger parameters from indexer")
+                val block = indexerClient.getCurrentBlockWithParams()
+                val ledgerParamsHex = block.ledgerParameters
+                    ?: throw IllegalStateException("Current block missing ledger parameters")
+                Log.d(TAG, "Got ledger parameters: ${ledgerParamsHex.length} hex chars")
+
+                // Step 5: Sign transaction
+                _state.value = SendUiState.Signing
+                Log.d(TAG, "Signing transaction with ${unsignedIntent.guaranteedUnshieldedOffer?.inputs?.size ?: 0} inputs")
+
+                val signedIntent = signIntent(unsignedIntent, privateKey)
+                Log.d(TAG, "Transaction signed successfully")
+
+                // Step 6: Submit transaction (Phase 2: without fees)
+                _state.value = SendUiState.Submitting
+                Log.d(TAG, "Submitting transaction to network (without dust fees)")
+
+                val result = transactionSubmitter.submitAndWait(
+                    signedIntent = signedIntent,
+                    fromAddress = fromAddress
+                )
+
+                // Step 7: Handle result
+                when (result) {
+                    is TransactionSubmitter.SubmissionResult.Success -> {
+                        Log.d(TAG, "Transaction submitted successfully: txHash=${result.txHash}")
+                        _state.value = SendUiState.Success(
+                            txHash = result.txHash,
+                            recipientAddress = toAddress,
+                            amountSent = amount
+                        )
+                    }
+                    is TransactionSubmitter.SubmissionResult.Failed -> {
+                        Log.e(TAG, "Transaction failed: ${result.reason}")
+                        _state.value = SendUiState.Error(
+                            message = "Transaction failed: ${result.reason}"
+                        )
+                    }
+                    is TransactionSubmitter.SubmissionResult.Pending -> {
+                        Log.e(TAG, "Transaction timeout: ${result.reason}")
+                        _state.value = SendUiState.Error(
+                            message = "Transaction timeout: ${result.reason}"
+                        )
+                    }
+                }
+
+
+            } catch (e: Exception) {
+                // CRITICAL: Log the full error for debugging
+                Log.e(TAG, "Transaction failed with exception", e)
+                Log.e(TAG, "Exception type: ${e.javaClass.simpleName}")
+                Log.e(TAG, "Exception message: ${e.message}")
+                e.printStackTrace()
+
+                _state.value = when (e) {
+                    is IllegalArgumentException -> {
+                        Log.e(TAG, "IllegalArgumentException in transaction: ${e.message}")
+                        SendUiState.Error(
+                            message = "Invalid input: ${e.message}",
+                            throwable = e
+                        )
+                    }
+                    is IllegalStateException -> {
+                        Log.e(TAG, "IllegalStateException in transaction: ${e.message}")
+                        SendUiState.Error(
+                            message = "Transaction error: ${e.message}",
+                            throwable = e
+                        )
+                    }
+                    else -> {
+                        Log.e(TAG, "Unexpected error in transaction: ${e.message}")
+                        SendUiState.Error(
+                            message = "Unexpected error: ${e.message}",
+                            throwable = e
+                        )
+                    }
+                }
+            } finally {
+                // CRITICAL SECURITY: Wipe all key material from memory
+                seed?.let { java.util.Arrays.fill(it, 0.toByte()) }
+                derivedKey?.clear()
+                hdWallet?.clear()
+            }
+        }
+    }
+
+    /**
+     * Sign an unsigned Intent with user's private key.
+     *
+     * **Process:**
+     * 1. For each input, get signing message
+     * 2. Sign each message with private key
+     * 3. Create signed Intent with signatures
+     *
+     * **Signature Requirements:**
+     * - One signature per input (BIP-340 Schnorr, 64 bytes)
+     * - Signatures must match sorted input order
+     *
+     * @param intent Unsigned Intent
+     * @param privateKey User's BIP-32 private key
+     * @return Signed Intent
+     */
+    private suspend fun signIntent(intent: Intent, privateKey: ByteArray): Intent {
+        val offer = intent.guaranteedUnshieldedOffer
+            ?: throw IllegalStateException("No guaranteed offer in Intent")
+
+        // Sign each input
+        val signatures = offer.inputs.mapIndexed { index, _ ->
+            // Get signing message for this input
+            // Note: Cast to FfiTransactionSerializer to access signing message method
+            val ffiSerializer = serializer as? com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
+                ?: throw IllegalStateException("Serializer must be FfiTransactionSerializer")
+
+            val signingMessageHex = ffiSerializer.getSigningMessageForInput(
+                inputs = offer.inputs,
+                outputs = offer.outputs,
+                inputIndex = index,
+                ttl = intent.ttl
+            ) ?: throw IllegalStateException("Failed to generate signing message for input $index")
+
+            // Convert hex to bytes
+            val messageToSign = signingMessageHex.chunked(2)
+                .map { it.toInt(16).toByte() }
+                .toByteArray()
+
+            // Sign with Schnorr BIP-340
+            val signature = TransactionSigner.signData(privateKey, messageToSign)
+                ?: throw IllegalStateException("Failed to sign input $index")
+
+            signature
+        }
+
+        // Create signed offer
+        val signedOffer = offer.copy(signatures = signatures)
+
+        // Create signed intent
+        return intent.copy(guaranteedUnshieldedOffer = signedOffer)
+    }
+
+    /**
+     * Convert exceptions to user-friendly error messages.
+     *
+     * Follows the same pattern as BalanceViewModel for consistency.
+     */
+    private fun getUserFriendlyError(throwable: Throwable): String {
+        return when {
+            // Database migration errors (common during development)
+            throwable.message?.contains("migration", ignoreCase = true) == true ||
+            throwable.message?.contains("RoomDatabase", ignoreCase = true) == true ->
+                "Database schema changed. Please clear app data in Settings > Apps > Kuira or reinstall the app."
+
+            // Network errors
+            throwable.message?.contains("network", ignoreCase = true) == true ->
+                "Network error. Please check your connection."
+
+            // Timeout errors
+            throwable.message?.contains("timeout", ignoreCase = true) == true ->
+                "Request timed out. Please try again."
+
+            // General database errors
+            throwable.message?.contains("database", ignoreCase = true) == true ->
+                "Database error. Please restart the app."
+
+            // Validation errors
+            throwable is IllegalArgumentException ->
+                "Invalid input: ${throwable.message}"
+
+            // Transaction errors
+            throwable is IllegalStateException ->
+                "Transaction error: ${throwable.message}"
+
+            // Fallback
+            else ->
+                "Failed to load balance: ${throwable.message}"
+        }
+    }
+
+    /**
+     * Reset to idle state.
+     *
+     * Call this after successful transaction to allow sending another.
+     */
+    fun reset() {
+        _state.value = SendUiState.Idle()
+    }
+
+    private companion object {
+        private const val TAG = "SendViewModel"
+    }
+}

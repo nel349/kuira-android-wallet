@@ -10,11 +10,13 @@ import kotlinx.serialization.Serializable
  * - `hash` must be non-empty hex string (64 characters for SHA-256)
  * - `timestamp` must be positive
  * - `eventCount` must be non-negative
+ * - `ledgerParameters` optional hex string (SCALE-encoded)
  *
  * @property height Block height (sequential number)
  * @property hash Block hash (hex string)
  * @property timestamp Block timestamp (Unix epoch milliseconds)
  * @property eventCount Number of ledger events in this block
+ * @property ledgerParameters Hex-encoded SCALE-serialized ledger parameters (optional)
  * @throws IllegalArgumentException if validation fails
  */
 @Serializable
@@ -22,7 +24,8 @@ data class BlockInfo(
     val height: Long,
     val hash: String,
     val timestamp: Long,
-    val eventCount: Int = 0
+    val eventCount: Int = 0,
+    val ledgerParameters: String? = null
 ) {
     init {
         // Validate height

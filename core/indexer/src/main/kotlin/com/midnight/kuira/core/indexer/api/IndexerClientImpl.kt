@@ -308,6 +308,62 @@ class IndexerClientImpl(
         }
     }
 
+    override suspend fun getCurrentBlockWithParams(): BlockInfo = retryWithPolicy() {
+        try {
+            val response = httpClient.post(graphqlEndpoint) {
+                contentType(ContentType.Application.Json)
+                setBody(GraphQLRequest(GraphQLQueries.QUERY_CURRENT_BLOCK))
+            }
+
+            val responseBody = response.bodyAsText()
+            val jsonResponse = json.parseToJsonElement(responseBody).jsonObject
+
+            // Check for GraphQL errors
+            val errors = jsonResponse["errors"]?.jsonArray
+            if (errors != null && errors.isNotEmpty()) {
+                val errorMessages = errors.map { it.jsonObject["message"]?.jsonPrimitive?.content ?: "Unknown error" }
+                throw GraphQLException(errorMessages, "GraphQL errors: ${errorMessages.joinToString()}")
+            }
+
+            val data = jsonResponse["data"]?.jsonObject
+                ?: throw InvalidResponseException("Missing 'data' field in response")
+
+            val block = data["block"]?.jsonObject
+                ?: throw InvalidResponseException("Missing 'block' field in response")
+
+            val height = block["height"]?.jsonPrimitive?.long
+                ?: throw InvalidResponseException("Missing 'height' field")
+            val hash = block["hash"]?.jsonPrimitive?.content
+                ?: throw InvalidResponseException("Missing 'hash' field")
+            val ledgerParameters = block["ledgerParameters"]?.jsonPrimitive?.content
+                ?: throw InvalidResponseException("Missing 'ledgerParameters' field")
+            val timestamp = block["timestamp"]?.jsonPrimitive?.long
+                ?: throw InvalidResponseException("Missing 'timestamp' field")
+
+            BlockInfo(
+                height = height,
+                hash = hash,
+                timestamp = timestamp,
+                eventCount = 0,
+                ledgerParameters = ledgerParameters
+            )
+        } catch (e: ResponseException) {
+            throw HttpException(e.response.status.value, "HTTP error: ${e.message}", e)
+        } catch (e: HttpRequestTimeoutException) {
+            throw TimeoutException("Request timeout while fetching current block", e)
+        } catch (e: java.net.UnknownHostException) {
+            throw NetworkException("DNS resolution failed for $graphqlEndpoint", e)
+        } catch (e: java.net.ConnectException) {
+            throw NetworkException("Connection failed to $graphqlEndpoint", e)
+        } catch (e: java.io.IOException) {
+            throw NetworkException("Network I/O error: ${e.message}", e)
+        } catch (e: IndexerException) {
+            throw e // Re-throw our custom exceptions
+        } catch (e: Exception) {
+            throw InvalidResponseException("Unexpected error: ${e.message}", e)
+        }
+    }
+
     override suspend fun getEventsInRange(fromId: Long, toId: Long): List<RawLedgerEvent> = retryWithPolicy() {
         // Validate input parameters
         if (fromId < 0) {

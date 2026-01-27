@@ -116,6 +116,25 @@ interface IndexerClient {
     suspend fun getNetworkState(): NetworkState
 
     /**
+     * Get current block with ledger parameters.
+     *
+     * **GraphQL Query:**
+     * ```graphql
+     * query {
+     *   block {
+     *     height
+     *     hash
+     *     ledgerParameters
+     *     timestamp
+     *   }
+     * }
+     * ```
+     *
+     * @return Current block info with ledger parameters hex
+     */
+    suspend fun getCurrentBlockWithParams(): BlockInfo
+
+    /**
      * Get historical events in range.
      *
      * **GraphQL Query:**

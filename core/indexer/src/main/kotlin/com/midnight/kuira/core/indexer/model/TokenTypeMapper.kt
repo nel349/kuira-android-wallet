@@ -21,6 +21,11 @@ object TokenTypeMapper {
     private const val NATIVE_TOKEN_HEX = "0000000000000000000000000000000000000000000000000000000000000000"
 
     /**
+     * Display symbol for native NIGHT token.
+     */
+    const val NIGHT_SYMBOL = "NIGHT"
+
+    /**
      * Convert indexer token hex to display symbol.
      *
      * **Mapping:**
@@ -32,7 +37,7 @@ object TokenTypeMapper {
      */
     fun toDisplaySymbol(tokenHex: String): String {
         return when (tokenHex) {
-            NATIVE_TOKEN_HEX -> "NIGHT"
+            NATIVE_TOKEN_HEX -> NIGHT_SYMBOL
             else -> {
                 // Custom token: Show first 8 chars for now
                 // Future: Look up custom token registry for proper symbol
@@ -55,7 +60,7 @@ object TokenTypeMapper {
      */
     fun toIndexerHex(displaySymbol: String): String {
         return when (displaySymbol.uppercase()) {
-            "NIGHT", "DUST" -> NATIVE_TOKEN_HEX
+            NIGHT_SYMBOL, "DUST" -> NATIVE_TOKEN_HEX
             else -> displaySymbol.lowercase()
         }
     }

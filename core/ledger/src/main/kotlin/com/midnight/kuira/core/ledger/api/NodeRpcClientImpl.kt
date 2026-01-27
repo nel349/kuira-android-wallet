@@ -289,15 +289,15 @@ class NodeRpcClientImpl(
      * Wraps a midnight transaction (tagged SCALE) in a Substrate extrinsic.
      *
      * Substrate extrinsic format for unsigned extrinsics:
-     * - [compact_length_of_rest] [version] [call_index] [call_params...]
+     * compact_length_of_rest + version + call_index + call_params
      *
      * Example from polkadot.js for 569-byte midnight TX:
-     * - Full extrinsic: f908 04 05 00 e508 [midnight_tx_data]
+     * - Full extrinsic: f908 04 05 00 e508 + midnight_tx_data
      *   - f908 = compact(574) - length of the rest (576 total - 2 for this compact)
      *   - 04 = version byte (unsigned, version 4)
      *   - 05 = call enum variant (Midnight::sendMnTransaction)
      *   - 00 = ??? (need to investigate)
-     *   - e508 = compact(569) - length of midnight TX Vec<u8>
+     *   - e508 = compact(569) - length of midnight TX Vec u8
      *
      * @param midnightTxHex Hex-encoded midnight transaction (tagged SCALE)
      * @return Hex-encoded extrinsic

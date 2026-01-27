@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.hilt)
@@ -7,19 +7,14 @@ plugins {
 }
 
 android {
-    namespace = "com.midnight.kuira"
-    compileSdk {
-        version = release(36)
-    }
+    namespace = "com.midnight.kuira.feature.send"
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.midnight.kuira"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -41,23 +36,34 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true // Mock android.util.Log and other Android APIs
+        }
+    }
 }
 
 dependencies {
-    // Feature modules
-    implementation(project(":feature:balance"))
-    implementation(project(":feature:send"))
-    implementation(project(":core:indexer"))
+    // Core modules
+    implementation(project(":core:indexer"))     // For BalanceRepository
+    implementation(project(":core:ledger"))      // For transaction building/signing/submission
+    implementation(project(":core:crypto"))      // For address validation (Bech32m)
+
+    // Android Core
+    implementation(libs.androidx.core.ktx)
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
 
     // Hilt for dependency injection
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
-    // AndroidX Core
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
+    // AndroidX Lifecycle (ViewModel)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Compose
     implementation(libs.androidx.activity.compose)
@@ -66,17 +72,15 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-
-    // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.6")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
+    testImplementation("org.mockito:mockito-core:5.7.0")
+
+    // Android Instrumentation Testing
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

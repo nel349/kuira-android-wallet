@@ -100,6 +100,20 @@ object GraphQLQueries {
     """
 
     /**
+     * Query current block with ledger parameters.
+     */
+    const val QUERY_CURRENT_BLOCK = """
+        query {
+          block {
+            height
+            hash
+            ledgerParameters
+            timestamp
+          }
+        }
+    """
+
+    /**
      * Query zswap ledger events in range.
      *
      * Variables:

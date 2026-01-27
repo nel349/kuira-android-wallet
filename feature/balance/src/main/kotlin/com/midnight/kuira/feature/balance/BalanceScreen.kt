@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,17 +66,23 @@ import com.midnight.kuira.core.indexer.sync.SyncState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BalanceScreen(
-    viewModel: BalanceViewModel = hiltViewModel()
+    viewModel: BalanceViewModel = hiltViewModel(),
+    onNavigateToSend: ((String) -> Unit)? = null
 ) {
     val balanceState by viewModel.balanceState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
 
-    // Address input state - starts empty, user provides their own address
+    // Address input state - pre-filled with test address for MVP testing
     var address by remember {
-        mutableStateOf("")
+        mutableStateOf("mn_addr_undeployed10zejmzk5tcvl2gv37kma8ndhqc49w7xkmmae35g3ukyrp0r4rnjswe6pwa")
     }
 
-    // Don't auto-load on launch - user must enter address and click refresh
+    // Auto-load balance on launch for faster testing (MVP ONLY)
+    LaunchedEffect(Unit) {
+        if (address.isNotBlank()) {
+            viewModel.loadBalances(address)
+        }
+    }
 
     val context = LocalContext.current
     val pullToRefreshState = rememberPullToRefreshState()
@@ -87,7 +94,25 @@ fun BalanceScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                ),
+                actions = {
+                    // Send button (if navigation callback provided)
+                    onNavigateToSend?.let { navigateToSend ->
+                        IconButton(
+                            onClick = {
+                                android.util.Log.d("BalanceScreen", "Send button clicked with address: '$address'")
+                                navigateToSend(address)
+                            },
+                            enabled = address.isNotBlank() && address.startsWith("mn_")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Send Transaction",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
             )
         }
     ) { paddingValues ->

@@ -105,6 +105,15 @@ object IndexerModule {
     }
 
     /**
+     * Provide DustDao from database.
+     *
+     * **Purpose:** For DustRepository to access dust token database.
+     */
+    @Provides
+    @Singleton
+    fun provideDustDao(database: UtxoDatabase) = database.dustDao()
+
+    /**
      * Provide BalanceRepository singleton.
      *
      * **Singleton Scope:** Repository layer is stateless, safe to share.
