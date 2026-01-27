@@ -1,8 +1,8 @@
 # Kuira Wallet - Implementation Plan
 
 **Project:** Midnight Wallet for Android
-**Estimate:** 103-152 hours across 8 phases (revised: +18-27h from original plan)
-**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B (Unshielded) ✅ Complete | **Phase 2 🔄 In Progress (83%)**
+**Estimate:** 120-169 hours across 8 phases (revised: +35-44h from original plan)
+**Status:** Phase 1 ✅ Complete | Phase 4A-Full ✅ Complete | Phase 4B (Unshielded) ✅ Complete | **Phase 2 🔄 In Progress (80%)**
 
 **⚠️ Major Revisions:**
 - Shielded balance tracking (Phase 4B-Shielded) NOT implemented: +8-12h
@@ -22,7 +22,7 @@ See **PROGRESS.md** for current status and hours invested.
 2. ✅ **Phase 4A-Full Complete**: GraphQL HTTP client + sync engine (21h)
 3. ✅ **Phase 4B Complete**: WebSocket subscriptions + **UNSHIELDED** UTXO tracking (23.5h)
 4. ✅ **Phase 4B-UI Complete**: **UNSHIELDED** balance display (7h)
-5. 🔄 **Phase 2 In Progress**: Unshielded transactions (37h/22-30h, 83%)
+5. 🔄 **Phase 2 In Progress**: Unshielded transactions (81h/89-109h, 80%)
 6. ⚠️ **Phase 4B-Shielded MISSING**: Shielded balance tracking NOT implemented (est: 8-12h)
 7. ⏭️ **Phase 3 Next**: Shielded transactions (requires Phase 4B-Shielded first)
 
@@ -46,13 +46,16 @@ See **PROGRESS.md** for current status and hours invested.
 | ↳ 4B-2: UTXO Database | Room database + subscriptions | ~10h | 2.5h | ✅ Complete |
 | ↳ 4B-3: Balance Repository | Repository layer + ViewModels | ~3h | 6h | ✅ Complete |
 | ↳ 4B-4: UI Integration | Display balances (Compose) | ~5-8h | 7h | ✅ Complete |
-| **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 22-30h | 37h | 🔄 In Progress (83%) |
+| **Phase 2: Unshielded Transactions** | Send/receive transparent tokens | 89-109h | 81h | 🔄 In Progress (80%) |
+| ↳ 2A-2E: Transaction Infrastructure | Models, signing, DUST, submission | 72-93h | 81h | ✅ Complete |
+| ↳ 2F: Send UI (MVP) | Basic send form | 6-8h | 0h | ⏸️ Next |
+| ↳ 2F.1: Dust Tank Display | Lace-compatible dust UI | 11-15h | 0h | ⏸️ Deferred |
 | **Phase 4B-Shielded: Shielded Balances** | ⚠️ **MISSING** - Shielded UTXO tracking | 8-12h | 0h | ⏸️ Not Started |
 | **Phase 3: Shielded Transactions** | Private ZK transactions | 20-25h | 0h | ⏸️ Not Started |
 | **Phase 5: DApp Connector** | Contract interaction via WebView | 25-35h | 0h | ⏸️ Not Started |
 | **Phase 6: UI & Polish** | Production-ready app | 15-20h | 0h | ⏸️ Not Started |
 
-**Progress:** 122.5h / ~140h revised estimate (88% complete - accounting for missing shielded balances + complex contract transactions)
+**Progress:** 126.5h / ~185h revised estimate (68% complete - accounting for Phase 2F.1 deferred + missing shielded balances + complex contract transactions)
 
 ---
 

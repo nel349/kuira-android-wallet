@@ -1,8 +1,8 @@
 # Phase 2: Unshielded Transactions - Progress Tracker
 
-**Last Updated:** January 22, 2026
+**Last Updated:** January 26, 2026
 **Phase Start Date:** January 19, 2026
-**Overall Progress:** 94% (~24h / 22-30h estimated)
+**Overall Progress:** 80% (81h / 101h revised estimate)
 
 ---
 
@@ -14,11 +14,13 @@
 | **2A: Models** | ✅ Complete | 2-3h | 3h | All models + 52 tests + peer review |
 | **2B: UTXO Manager** | ✅ Complete | 2-3h | 3.5h | Coin selection + 25 tests + refactoring |
 | **2C: Builder** | ✅ Complete | 3-4h | 1.5h | Transaction builder + 10 tests + peer review |
-| **2D-FFI: JNI Wrapper** | ✅ Complete | 8-10h | 10h | Rust FFI + JNI bridge + 36 tests |
-| **2E: Submission** | ✅ Complete | 2-3h | 4h | SCALE serialization + RPC client + data model fix |
-| **2F: Send UI** | ⏸️ Pending | 3-4h | - | - |
+| **2D-FFI: JNI Wrapper** | ✅ Complete | 8-10h | 29h | Rust FFI + JNI bridge + signing + serialization |
+| **2-DUST: Dust Fee Payment** | ✅ Complete | 30-40h | 42h | Query, replay, Merkle tree, fee calculation |
+| **2E: Submission** | ✅ Complete | 2-3h | 2h | RPC client + TransactionSubmitter + tests |
+| **2F: Send UI (MVP)** | ⏸️ Next | 6-8h | - | Basic send form (no dust display) |
+| **2F.1: Dust Tank Display** | ⏸️ Deferred | 11-15h | - | Dust balance UI (Lace replica) |
 
-**Total:** ~24h completed / 22-30h estimated = **94% complete**
+**Total:** 81h completed / 101h revised estimate = **80% complete**
 
 ---
 

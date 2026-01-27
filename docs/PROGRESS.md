@@ -1,9 +1,9 @@
 # Kuira Wallet - Progress Tracker
 
-**Last Updated:** January 24, 2026
-**Current Phase:** Phase 2 (Unshielded Transactions) - Phase 2-DUST Required (62%)
-**Hours Invested:** 122.5h / ~160h estimated (revised with dust requirement)
-**Completion:** ~77% (revised estimate includes mandatory dust wallet)
+**Last Updated:** January 26, 2026
+**Current Phase:** Phase 2 (Unshielded Transactions) - Phase 2F MVP (80%)
+**Hours Invested:** 126.5h / ~185h estimated (revised with Phase 2F.1)
+**Completion:** ~68% (revised estimate includes dust tank display deferred to 2F.1)
 
 ---
 
@@ -20,27 +20,28 @@
 | ↳ 4B-2: UTXO Database | ✅ Complete | ~10h | 2.5h | 100% |
 | ↳ 4B-3: Balance Repository | ✅ Complete | ~3h | 6h | 100% |
 | ↳ 4B-4: UI Integration | ✅ Complete | ~5-8h | 7h | 100% |
-| **Phase 2: Unshielded Transactions** | 🔄 **In Progress** | 62-78h | 37h | 62% |
+| **Phase 2: Unshielded Transactions** | 🔄 **In Progress** | 89-109h | 81h | 80% |
 | ↳ 2A: Transaction Models | ✅ Complete | 2-3h | 3h | 100% |
 | ↳ 2B: UTXO Manager | ✅ Complete | 2-3h | 3.5h | 100% |
 | ↳ 2C: Transaction Builder | ✅ Complete | 3-4h | 1.5h | 100% |
 | ↳ 2D-FFI: JNI Ledger Wrapper | ✅ Complete | 8-10h | 29h | 100% |
-| ↳ **2-DUST: Dust Wallet** | 🔴 **CRITICAL** | **30-40h** | **0h** | **0%** |
-| ↳ 2E: Submission Layer | ⏸️ Blocked | 2-3h | 0h | 0% |
-| ↳ 2F: Send UI | ⏸️ Blocked | 3-4h | 0h | 0% |
+| ↳ 2-DUST: Dust Fee Payment | ✅ Complete | 30-40h | 42h | 100% |
+| ↳ 2E: Submission Layer | ✅ Complete | 2-3h | 2h | 100% |
+| ↳ 2F: Send UI (MVP) | ⏸️ Next | 6-8h | 0h | 0% |
+| ↳ 2F.1: Dust Tank Display | ⏸️ Deferred | 11-15h | 0h | 0% |
 | **Phase 3: Shielded Transactions** | ⏸️ Not Started | 20-25h | 0h | 0% |
 | **Phase 5: DApp Connector** | ⏸️ Not Started | 15-20h | 0h | 0% |
 | **Phase 6: UI & Polish** | ⏸️ Not Started | 15-20h | 0h | 0% |
 
-**Next Milestone:** Dust Wallet implementation (30-40h for Phase 2-DUST - CRITICAL BLOCKER)
+**Next Milestone:** Phase 2F MVP - Basic Send UI (6-8h estimated)
 
 ---
 
-## 🔴 CRITICAL DISCOVERY: Phase 2-DUST Required (January 24, 2026)
+## ✅ RESOLVED: Phase 2-DUST Complete (January 26, 2026)
 
-**Status:** 🔴 **BLOCKER** - Phase 2E/2F cannot proceed without dust wallet
-**Investigation Time:** 8 hours (testing + investigation + planning)
-**Document:** `docs/PHASE_2_DUST_PLAN.md`
+**Status:** ✅ **COMPLETE** - Dust fee payment fully implemented
+**Total Time:** 42 hours (30-40h estimated)
+**Document:** `docs/PHASE_2_PLAN.md` (updated with completion status)
 
 ### Root Cause Analysis
 

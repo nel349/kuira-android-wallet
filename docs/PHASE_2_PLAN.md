@@ -2,9 +2,11 @@
 
 **Goal:** Enable users to send transparent (non-private) tokens from Kuira wallet
 
-**Status:** 🟢 **84% COMPLETE** - Ready for Phase 2E (Submission Layer)
+**Status:** 🟢 **88% COMPLETE** - Ready for Phase 2F (Send UI MVP)
 
-**Last Updated:** January 26, 2026 - 12:30 PM PST
+**Last Updated:** January 26, 2026 - 4:00 PM PST
+
+**Decision:** Split Phase 2F into MVP (basic send) + Phase 2F.1 (dust tank display)
 
 ---
 
@@ -16,11 +18,12 @@
 | 2B: UTXO Manager | ✅ Complete | 3.5h | Coin selection + state tracking |
 | 2C: Transaction Builder | ✅ Complete | 1.5h | Construct & balance transactions |
 | 2D-FFI: JNI Ledger Wrapper | ✅ Complete | 29h | Signing + serialization via Rust |
-| **Phase 2-DUST: Dust Fee Payment** | **✅ Complete** | **42h** | **Query, replay, serialize with dust** |
-| **2E: Submission Layer** | **⏸️ Next** | **2-3h** | **RPC client for node submission** |
-| 2F: Send UI | ⏸️ Pending | 3-4h | Compose screen for sending |
+| Phase 2-DUST: Dust Fee Payment | ✅ Complete | 42h | Query, replay, serialize with dust |
+| 2E: Submission Layer | ✅ Complete | 2h | RPC client + TransactionSubmitter |
+| **2F: Send UI (MVP)** | **⏸️ Next** | **6-8h** | **Basic send form (no dust display)** |
+| **2F.1: Dust Tank Display** | **⏸️ Deferred** | **11-15h** | **Dust balance UI (Lace replica)** |
 
-**Total Time:** 79h actual / 94h estimated (84% complete)
+**Total Time:** 81h actual / 101h revised estimate (80% complete)
 
 ---
 
@@ -47,44 +50,94 @@
 
 **Test Proof:** `OK (1 test)` - Serialization produces valid 4218-byte SCALE output
 
+**Transaction Submission (Phase 2E):**
+- ✅ NodeRpcClient for JSON-RPC 2.0 to Midnight node
+- ✅ Wraps midnight transactions in Substrate extrinsics
+- ✅ TransactionSubmitter orchestrates submission + confirmation
+- ✅ Tracks confirmation via IndexerClient subscription
+- ✅ Comprehensive error handling (network, HTTP, timeout, rejection)
+- ✅ Unit tests: `TransactionSubmitterTest` (4 tests passing)
+- ✅ Integration test: `EndToEndTransactionTest` (full submission flow)
+
 ---
 
-## 🎯 What's Next: Phase 2E (Submission Layer)
+## 🎯 What's Next: Phase 2F (Send UI MVP)
 
-**Goal:** Submit serialized transactions to Midnight node via RPC
+**Goal:** Basic functional send UI (defer dust tank to 2F.1)
 
-**Estimated Time:** 2-3 hours
+**Estimated Time:** 6-8 hours
 
-**What to Build:**
-1. `NodeRpcClient.kt` - HTTP client for JSON-RPC 2.0
-   - POST to `http://localhost:9944`
-   - Method: `author_submitExtrinsic`
-   - Input: Serialized transaction hex
-   - Output: Transaction hash
+**Decision Rationale:**
+Per `PHASE_2_READINESS_FOR_UI.md`, we're choosing **Option B**:
+- ✅ Build working send form NOW (validates transactions)
+- ⏸️ Defer dust tank display (requires 11-15h backend work)
+- 🎯 Result: Users can send NIGHT tokens immediately
 
-2. `TransactionSubmitter.kt` - Orchestrate submission + confirmation
-   - Submit to node
-   - Subscribe to indexer for confirmation (reuse Phase 4B)
-   - Emit status: Submitting → InBlock → Finalized
+**What to Build (Phase 2F MVP):**
+- `SendScreen.kt` - Compose UI with:
+  - Recipient address input
+  - Amount input (with balance validation)
+  - Fee display (calculated)
+  - Send button + loading states
+- `SendViewModel.kt` - State management:
+  - Balance checking
+  - Transaction building
+  - Error handling
+  - Success confirmation
+- `AddressValidator.kt` - Bech32m validation wrapper (30 min)
+- Navigation integration
 
-3. Integration test (manual, requires local node)
+**What's EXCLUDED (deferred to 2F.1):**
+- ❌ Dust tank progress bar ("4.6512/55 tDUST")
+- ❌ Fill time countdown ("153h47min")
+- ❌ Designation info ("Designated to: Yourself")
+- ❌ Current dust balance calculation
+
+**Module:** `feature/send` (new module)
 
 **Dependencies:**
-- ✅ Ktor HTTP client (already have for indexer)
-- ✅ IndexerClient (already implemented in Phase 4B)
+- ✅ Phase 2B: UTXO Manager (for balance)
+- ✅ Phase 2C: Transaction Builder
+- ✅ Phase 2E: Transaction Submitter
+- ✅ Phase 4B: Balance Repository
 
 ---
 
-## 🔜 After That: Phase 2F (Send UI)
+## 🔜 After MVP: Phase 2F.1 (Dust Tank Display)
 
-**Goal:** User interface for sending tokens
+**Goal:** Replicate Lace wallet dust tank UI
 
-**Estimated Time:** 3-4 hours
+**Estimated Time:** 11-15 hours
+
+**When:** After Phase 2F MVP validated with real transactions
 
 **What to Build:**
-- `SendScreen.kt` - Compose UI with form validation
-- `SendViewModel.kt` - State management
-- Address validation wrapper (30 min, Bech32m decoder exists)
+1. **Backend (6-8h):**
+   - `DustValueCalculator.kt` - Calculate current dust at time T
+   - `LedgerParams.kt` - Blockchain constants (hardcoded for testnet)
+   - Repository extensions for dust tank aggregation
+   - `DustTankInfo` data model
+   - Integration tests with Lace wallet
+
+2. **UI (3-4h):**
+   - `DustTankCard` composable - Progress bar, fill time
+   - `DesignationCard` composable - tNIGHT designation info
+   - Real-time dust generation updates
+   - Animations and polish
+
+3. **Validation (2-3h):**
+   - Test with same mnemonic as Lace
+   - Verify dust values match
+   - Verify fill time matches
+
+**Dependencies:**
+- ✅ Phase 2-DUST: Dust database already has all fields
+- ⏸️ Dust value calculation (new)
+- ⏸️ Ledger params parsing or hardcoding (new)
+
+**Reference:**
+- See `PHASE_2_READINESS_FOR_UI.md` for detailed gap analysis
+- See `SCALE_ENCODING_EXPLAINED.md` for understanding SCALE params
 
 ---
 
@@ -98,9 +151,9 @@ User wants to send 100 NIGHT to recipient
 3. Sign with Schnorr (Phase 2D-FFI) ✅
 4. Serialize to SCALE (Phase 2D-FFI) ✅
 5. Add dust fee payment (Phase 2-DUST) ✅
-6. Submit to node via RPC (Phase 2E) ⏸️ NEXT
-7. Track confirmation (Phase 2E)
-8. Update UI (Phase 2F)
+6. Submit to node via RPC (Phase 2E) ✅
+7. Track confirmation (Phase 2E) ✅
+8. Update UI (Phase 2F) ⏸️ NEXT
 ```
 
 ---
@@ -561,46 +614,110 @@ docs/reviews/
 
 ---
 
-## Phase 2E: Submission Layer (2-3h) ⏸️ NEXT
+## Phase 2E: Submission Layer (2h actual, 2-3h estimated) ✅ COMPLETE
 
 **Goal:** Submit serialized transaction to Midnight node via RPC
 
-**Implementation Pattern:**
-```kotlin
-// Step 1: Submit to node RPC (HTTP POST)
-val txHash = nodeRpcClient.submitExtrinsic(serializedTx)
+**Status:** ✅ **COMPLETE** - Full submission pipeline with comprehensive testing
 
-// Step 2: Subscribe to indexer for confirmation (reuse Phase 4B)
-indexerClient.subscribeToUnshieldedTransactions(address, txId)
-    .collect { update ->
-        when (update) {
-            is Transaction -> {
-                if (update.transaction.hash == txHash) {
-                    // Transaction confirmed!
-                }
-            }
-        }
-    }
-```
-
-**What to Build:**
-- [ ] `NodeRpcClient.kt` - HTTP client for JSON-RPC 2.0
-  - POST to `http://localhost:9944`
-  - Method: `author_submitExtrinsic`
-  - Returns transaction hash
-- [ ] `TransactionSubmitter.kt` - Orchestrate submission + confirmation
-  - Submit to node
-  - Subscribe to indexer (reuse Phase 4B)
-  - Emit status updates (Submitting → InBlock → Finalized)
-  - Handle errors (Invalid, Dropped)
-- [ ] Integration tests (requires local node)
+**Deliverables:**
+- [x] `NodeRpcClient.kt` - Interface for JSON-RPC 2.0 communication (96 lines)
+- [x] `NodeRpcClientImpl.kt` - Ktor-based implementation (388 lines)
+  - Wraps midnight transactions in Substrate extrinsics
+  - SCALE compact encoding for extrinsic format
+  - Health check support
+  - Development mode (HTTP localhost) + production mode (HTTPS only)
+- [x] `NodeRpcException.kt` - Comprehensive error hierarchy (95 lines)
+  - Network errors (connectivity, DNS, timeout)
+  - HTTP errors (4xx, 5xx)
+  - JSON-RPC errors (parse, invalid params, internal)
+  - Transaction rejection handling
+- [x] `TransactionSubmitter.kt` - Orchestrates submission + confirmation (333 lines)
+  - `submitAndWait()` - Submit and wait for finalization
+  - `submitOnly()` - Fire-and-forget submission
+  - `submitWithFees()` - Automatic dust fee payment (Phase 2-DUST integration)
+  - Tracks confirmation via IndexerClient subscription
+  - Automatic retry logic with exponential backoff
+- [x] `TransactionSerializer.kt` - Serializes Intent to SCALE (433 lines)
+  - FFI-based serializer using Rust midnight-ledger
+  - Converts Kotlin models → JSON → Rust FFI → SCALE hex
+  - Stub serializer for unit testing without FFI
+- [x] Unit tests: `TransactionSubmitterTest.kt` (4 tests, all passing)
+  - Success case with confirmation
+  - Rejection case
+  - Fire-and-forget case
+  - Serialization determinism
+- [x] Integration test: `EndToEndTransactionTest.kt`
+  - Full flow from wallet generation → signing → serialization → submission
+  - Tests against real local Midnight node
+  - Validates SCALE format acceptance
 
 **Module:** `core/ledger`
 
-**Dependencies:**
-- ✅ Phase 2D-FFI: Serialized transactions
-- ✅ Phase 4B: IndexerClient (reuse existing subscription)
-- ✅ Ktor HTTP Client (already have)
+**Key Implementation:**
+```kotlin
+// Submit and wait for confirmation
+val result = submitter.submitAndWait(
+    signedIntent = intent,
+    fromAddress = senderAddress,
+    timeoutMs = 60_000L
+)
+
+when (result) {
+    is SubmissionResult.Success -> {
+        println("✅ Transaction confirmed: ${result.txHash}")
+        println("   Block: ${result.blockHeight}")
+    }
+    is SubmissionResult.Failed -> {
+        println("❌ Transaction failed: ${result.reason}")
+    }
+    is SubmissionResult.Pending -> {
+        println("⏳ Confirmation timeout (may still succeed)")
+    }
+}
+```
+
+**Extrinsic Wrapping:**
+Midnight transactions must be wrapped in Substrate extrinsics before submission:
+```
+[compact_length] [version=0x04] [call_variant=0x05] [mystery_byte=0x00] [compact_tx_length] [midnight_tx_data]
+```
+
+**Error Handling:**
+- Network errors: Retry with exponential backoff
+- HTTP 5xx: Retry with backoff
+- HTTP 4xx: Don't retry (client error)
+- Transaction rejected: Don't retry (fix transaction)
+- Timeout: Return Pending (transaction may still process)
+
+**Test Results:**
+- Unit tests: 4/4 passing
+- Integration test: Manual verification (requires local node)
+- Used in: `RealTransactionTest.kt`, `RealDustFeePaymentTest.kt`
+
+**Files Created:**
+```
+core/ledger/src/main/kotlin/com/midnight/kuira/core/ledger/api/
+├── NodeRpcClient.kt (96 lines)
+├── NodeRpcClientImpl.kt (388 lines)
+├── NodeRpcException.kt (95 lines)
+├── TransactionSubmitter.kt (333 lines)
+└── TransactionSerializer.kt (433 lines)
+
+core/ledger/src/test/kotlin/com/midnight/kuira/core/ledger/api/
+└── TransactionSubmitterTest.kt (190 lines)
+
+core/ledger/src/androidTest/kotlin/com/midnight/kuira/core/ledger/e2e/
+└── EndToEndTransactionTest.kt (integration test)
+```
+
+**Dependencies Used:**
+- ✅ Ktor HTTP Client (for JSON-RPC communication)
+- ✅ IndexerClient (for confirmation tracking)
+- ✅ Phase 2D-FFI serialization
+- ✅ Phase 2-DUST integration
+
+**Next Phase:** Phase 2F (Send UI) - Use this submission infrastructure in the UI
 
 ---
 
