@@ -24,6 +24,18 @@ interface TransactionSerializer {
      * @throws IllegalStateException if serialization fails
      */
     fun serialize(intent: Intent): String
+
+    /**
+     * Seal a proven transaction by transforming the binding commitment.
+     *
+     * After receiving a proven transaction from the proof server, this method
+     * transforms the binding from `PedersenRandomness` (embedded-fr[v1]) to
+     * `PureGeneratorPedersen` (pedersen-schnorr[v1]) before submitting to the node.
+     *
+     * @param provenTxHex Hex-encoded proven transaction from proof server
+     * @return Hex-encoded finalized (sealed) transaction, or null on error
+     */
+    fun sealProvenTransaction(provenTxHex: String): String?
 }
 
 /**
@@ -391,6 +403,21 @@ class FfiTransactionSerializer : TransactionSerializer {
     }
 
     /**
+     * JNI: Seals a proven transaction by transforming the binding commitment.
+     */
+    override fun sealProvenTransaction(provenTxHex: String): String? {
+        return nativeSealProvenTransaction(provenTxHex)
+    }
+
+    /**
+     * Native function: Seals a proven transaction.
+     *
+     * @param provenTxHex Hex-encoded proven transaction from proof server
+     * @return Hex-encoded finalized (sealed) transaction, or null on error
+     */
+    private external fun nativeSealProvenTransaction(provenTxHex: String): String?
+
+    /**
      * DEPRECATED: Stub function for backward compatibility.
      * Use nativeSerializeTransaction() instead.
      */
@@ -428,5 +455,11 @@ class StubTransactionSerializer : TransactionSerializer {
         val padding = "00".repeat(100)
 
         return magic + version + inputsCount + outputsCount + signaturesCount + ttlHex + padding
+    }
+
+    override fun sealProvenTransaction(provenTxHex: String): String? {
+        // Stub implementation: just return the input unchanged
+        // Real sealing would transform binding commitment type
+        return provenTxHex
     }
 }

@@ -43,12 +43,14 @@ import kotlinx.coroutines.withTimeout
  * ```
  *
  * @property nodeRpcClient Client for submitting transactions to node
+ * @property proofServerClient Client for proving transactions (Phase 2)
  * @property indexerClient Client for tracking transaction confirmation
  * @property serializer Serializes signed Intent to SCALE codec
  * @property dustActionsBuilder Builder for dust fee payment actions (optional, Phase 2E)
  */
 class TransactionSubmitter(
     private val nodeRpcClient: NodeRpcClient,
+    private val proofServerClient: ProofServerClient,
     private val indexerClient: IndexerClient,
     private val serializer: TransactionSerializer,
     private val dustActionsBuilder: DustActionsBuilder? = null
@@ -58,14 +60,17 @@ class TransactionSubmitter(
      * Submit a signed transaction and wait for finalization.
      *
      * **Steps:**
-     * 1. Serialize transaction to SCALE codec
-     * 2. Submit to node RPC
-     * 3. Subscribe to indexer for confirmation
-     * 4. Wait for transaction to appear (finalized)
-     * 5. Return result
+     * 1. Serialize transaction to SCALE codec (unproven)
+     * 2. Prove transaction via proof server (Phase 2 - NEW)
+     * 3. Seal proven transaction (transform binding commitment)
+     * 4. Submit finalized transaction to node RPC
+     * 5. Subscribe to indexer for confirmation
+     * 6. Wait for transaction to appear (finalized)
+     * 7. Return result
      *
      * **Timeout:**
-     * - Default: 60 seconds
+     * - Default: 60 seconds (does NOT include proof server time)
+     * - Proof server: ~2-10 seconds (handled separately with 5 min timeout)
      * - Typical finalization: 6-12 seconds
      * - If timeout occurs, transaction may still be pending
      *
@@ -74,6 +79,7 @@ class TransactionSubmitter(
      * @param timeoutMs Maximum time to wait for finalization (default 60s)
      * @return SubmissionResult indicating success or failure
      * @throws NodeRpcException if submission to node fails
+     * @throws ProofServerException if proving fails
      * @throws kotlinx.coroutines.TimeoutCancellationException if confirmation times out
      */
     suspend fun submitAndWait(
@@ -81,8 +87,8 @@ class TransactionSubmitter(
         fromAddress: String,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS
     ): SubmissionResult {
-        // Step 1: Serialize transaction
-        val serializedHex = try {
+        // Step 1: Serialize unproven transaction
+        val unprovenTxHex = try {
             serializer.serialize(signedIntent)
         } catch (e: Exception) {
             return SubmissionResult.Failed(
@@ -91,9 +97,43 @@ class TransactionSubmitter(
             )
         }
 
-        // Step 2: Submit to node
+        Log.d(TAG, "Transaction serialized (unproven): ${unprovenTxHex.length} hex chars")
+        Log.d(TAG, "Tag should contain: proof-preimage, pedersen[v1]")
+
+        // Step 2: Prove transaction via proof server (Phase 2 - NEW!)
+        val provenTxHex = try {
+            Log.d(TAG, "🔐 Proving transaction via proof server...")
+            proofServerClient.proveTransaction(unprovenTxHex)
+        } catch (e: ProofServerException) {
+            Log.e(TAG, "❌ Proof server error", e)
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Proof generation failed: ${e.message}"
+            )
+        }
+
+        Log.d(TAG, "✅ Transaction proven: ${provenTxHex.length} hex chars")
+        Log.d(TAG, "Tag contains: proof, embedded-fr[v1] (not yet sealed)")
+
+        // Step 2.5: Seal the proven transaction (transform binding commitment)
+        val finalizedTxHex = try {
+            Log.d(TAG, "🔐 Sealing proven transaction...")
+            serializer.sealProvenTransaction(provenTxHex)
+                ?: throw IllegalStateException("Sealing returned null")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Sealing error", e)
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Transaction sealing failed: ${e.message}"
+            )
+        }
+
+        Log.d(TAG, "✅ Transaction finalized: ${finalizedTxHex.length} hex chars")
+        Log.d(TAG, "Tag should now contain: proof, pedersen-schnorr[v1]")
+
+        // Step 3: Submit finalized transaction to node
         val txHash = try {
-            nodeRpcClient.submitTransaction(serializedHex)
+            nodeRpcClient.submitTransaction(finalizedTxHex)
         } catch (e: TransactionRejected) {
             return SubmissionResult.Failed(
                 txHash = e.txHash,
@@ -279,13 +319,30 @@ class TransactionSubmitter(
      *
      * **Use case:** When you don't need to wait for finalization
      *
+     * **Steps:**
+     * 1. Serialize unproven transaction
+     * 2. Prove via proof server (Phase 2 - NEW)
+     * 3. Seal proven transaction (transform binding commitment)
+     * 4. Submit finalized transaction to node
+     *
      * @param signedIntent Signed Intent
      * @return Transaction hash on success
      * @throws NodeRpcException on submission failure
+     * @throws ProofServerException if proving fails
      */
     suspend fun submitOnly(signedIntent: Intent): String {
-        val serializedHex = serializer.serialize(signedIntent)
-        return nodeRpcClient.submitTransaction(serializedHex)
+        // Step 1: Serialize unproven transaction
+        val unprovenTxHex = serializer.serialize(signedIntent)
+
+        // Step 2: Prove transaction
+        val provenTxHex = proofServerClient.proveTransaction(unprovenTxHex)
+
+        // Step 2.5: Seal the proven transaction
+        val finalizedTxHex = serializer.sealProvenTransaction(provenTxHex)
+            ?: throw IllegalStateException("Sealing returned null")
+
+        // Step 3: Submit finalized transaction
+        return nodeRpcClient.submitTransaction(finalizedTxHex)
     }
 
     /**
