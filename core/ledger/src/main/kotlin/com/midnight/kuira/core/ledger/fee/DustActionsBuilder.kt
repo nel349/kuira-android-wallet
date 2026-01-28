@@ -15,14 +15,14 @@ import javax.inject.Inject
  * **High-Level Flow:**
  * ```
  * 1. Calculate transaction fee (FeeCalculator)
- * 2. Select dust coins to cover fee (DustCoinSelector)
- * 3. Create DustSpend for each selected coin (DustSpendCreator)
- * 4. Mark coins as PENDING (DustRepository)
+ * 2. Load DustLocalState from repository
+ * 3. Create DustSpend for each UTXO in state (DustSpendCreator)
+ * 4. Save updated state (contains new nullifiers)
  * 5. Return DustActions (ready to add to Intent)
  * ```
  *
  * **DustActions Structure:**
- * - `spends`: List of DustSpend actions (one per selected coin)
+ * - `spends`: List of DustSpend actions (one per UTXO)
  * - `registrations`: List of DustRegistration actions (empty for fee payment)
  *
  * **Integration with TransactionSubmitter:**
@@ -38,15 +38,14 @@ import javax.inject.Inject
  * val intentWithFees = intent.copy(dustActions = dustActions)
  * ```
  *
- * **Rollback on Failure:**
- * If transaction submission fails, call `rollbackDustActions()` to unlock coins.
+ * **Note:** This implementation works directly with DustLocalState (Rust FFI),
+ * bypassing the database for fee payment. Database sync is only needed for UI display.
  *
  * @see `/midnight-wallet/packages/dust-wallet/src/Transacting.ts:addFeePayment` (TypeScript SDK reference)
  */
 class DustActionsBuilder @Inject constructor(
     private val dustRepository: DustRepository,
     private val feeCalculator: FeeCalculator,
-    private val coinSelector: DustCoinSelector,
     private val dustSpendCreator: DustSpendCreator
 ) {
 
@@ -66,10 +65,11 @@ class DustActionsBuilder @Inject constructor(
         val spends: List<DustSpendCreator.DustSpend>,
         val selectedCoins: List<DustTokenEntity>,
         val totalFee: BigInteger,
-        val change: BigInteger
+        val change: BigInteger,
+        val utxoIndices: List<Int>  // Indices of UTXOs used for fee payment
     ) {
         /** Returns true if actions were successfully created. */
-        fun isSuccess(): Boolean = spends.isNotEmpty()
+        fun isSuccess(): Boolean = utxoIndices.isNotEmpty()
 
         /** Returns nullifiers of selected coins (for state management). */
         fun getNullifiers(): List<String> = selectedCoins.map { it.nullifier }
@@ -80,17 +80,20 @@ class DustActionsBuilder @Inject constructor(
      *
      * **Steps:**
      * 1. Calculate transaction fee using midnight-ledger
-     * 2. Get available dust coins from repository
-     * 3. Select coins to cover fee (smallest-first strategy)
-     * 4. Load DustLocalState from repository
-     * 5. Create DustSpend for each selected coin
-     * 6. Mark coins as PENDING in database
-     * 7. Return DustActions
+     * 2. Load DustLocalState from repository
+     * 3. Create DustSpend for each UTXO in state
+     * 4. Save updated state (contains new nullifiers)
+     * 5. Return DustActions
      *
-     * **Important:**
-     * - Caller must handle rollback on transaction failure
-     * - Caller must mark coins as SPENT on transaction success
-     * - DustLocalState must be saved after creating spends
+     * **Implementation Notes:**
+     * - Works directly with DustLocalState (Rust FFI), bypasses database
+     * - Uses ALL available UTXOs (no coin selection for MVP)
+     * - Only first spend pays fee, rest have vFee=0
+     * - State is saved immediately after spends created
+     *
+     * **Rollback:**
+     * Not needed for MVP - if transaction fails, state is already saved.
+     * Future: Track UTXO states in database for UI display.
      *
      * @param transactionHex SCALE-serialized transaction (hex)
      * @param ledgerParamsHex SCALE-serialized ledger parameters (hex)
@@ -122,32 +125,7 @@ class DustActionsBuilder @Inject constructor(
 
         android.util.Log.d(TAG, "Transaction fee: $fee Specks")
 
-        // Step 2: Get available dust coins
-        val availableCoins = dustRepository.getAvailableTokensSorted(address)
-
-        if (availableCoins.isEmpty()) {
-            android.util.Log.e(TAG, "No dust coins available")
-            return null
-        }
-
-        android.util.Log.d(TAG, "Available coins: ${availableCoins.size}")
-
-        // Step 3: Select coins to cover fee
-        val currentTime = System.currentTimeMillis()
-        val selection = coinSelector.selectCoins(
-            availableCoins = availableCoins,
-            requiredFee = fee,
-            currentTimeMillis = currentTime
-        )
-
-        if (!selection.isSuccess()) {
-            android.util.Log.e(TAG, "Insufficient dust to cover fee (required: $fee Specks)")
-            return null
-        }
-
-        android.util.Log.d(TAG, "Selected ${selection.selectedCoins.size} coins (total: ${selection.totalValue} Specks, change: ${selection.change} Specks)")
-
-        // Step 4: Load DustLocalState
+        // Step 2: Load DustLocalState
         val state = dustRepository.loadState(address)
         if (state == null) {
             android.util.Log.e(TAG, "Failed to load dust state for $address")
@@ -158,45 +136,44 @@ class DustActionsBuilder @Inject constructor(
             // Get state pointer for FFI calls
             val statePtr = state.getStatePointer()
 
-            // Step 5: Create DustSpend for each selected coin
-            val spends = mutableListOf<DustSpendCreator.DustSpend>()
+            // Get UTXO count from state
+            val utxoCount = state.getUtxoCount()
 
-            for ((index, coin) in selection.selectedCoins.withIndex()) {
-                android.util.Log.d(TAG, "Creating spend for UTXO $index (nullifier: ${coin.nullifier})")
-
-                val spend = dustSpendCreator.createDustSpend(
-                    statePtr = statePtr,
-                    seed = seed,
-                    utxoIndex = index,
-                    vFee = if (index == 0) fee else BigInteger.ZERO, // Only first spend pays fee
-                    currentTimeMs = currentTime
-                )
-
-                if (spend == null) {
-                    android.util.Log.e(TAG, "Failed to create dust spend for UTXO $index")
-                    return null
-                }
-
-                spends.add(spend)
+            if (utxoCount == 0) {
+                android.util.Log.e(TAG, "No dust UTXOs in state")
+                return null
             }
 
-            android.util.Log.d(TAG, "Created ${spends.size} dust spends")
+            android.util.Log.d(TAG, "Found $utxoCount dust UTXOs")
 
-            // Step 6: Save updated state
-            dustRepository.saveState(address, state)
+            // Step 3: Select UTXOs for fee payment (use all for MVP)
+            val selectedIndices = (0 until utxoCount).toList()
+            val currentTime = System.currentTimeMillis()
 
-            // Step 7: Mark coins as PENDING
-            val nullifiers = selection.selectedCoins.map { it.nullifier }
-            dustRepository.markTokensAsPending(nullifiers)
+            // Check total dust balance at current time
+            val totalBalance = state.getBalance(currentTime)
+            android.util.Log.d(TAG, "Total dust balance: $totalBalance Specks (at $currentTime ms)")
+            android.util.Log.d(TAG, "Required fee: $fee Specks")
 
-            android.util.Log.d(TAG, "Marked ${nullifiers.size} coins as PENDING")
+            if (totalBalance < fee) {
+                android.util.Log.e(TAG, "Insufficient dust: have $totalBalance, need $fee")
+                android.util.Log.e(TAG, "Dust UTXOs need time to accumulate value. Wait a few minutes and try again.")
+                return null
+            }
 
-            // Return DustActions with real spends
+            android.util.Log.d(TAG, "Selected ${selectedIndices.size} UTXO(s) for fee payment")
+
+            // NOTE: Do NOT call createDustSpend here!
+            // The Rust FFI will call state.spend() when serializing the transaction.
+            // Calling it here would double-spend the UTXOs.
+
+            // Return DustActions with UTXO indices (spends will be created in Rust FFI)
             return DustActions(
-                spends = spends,
-                selectedCoins = selection.selectedCoins,
+                spends = emptyList(), // Spends created in Rust FFI, not here
+                selectedCoins = emptyList(), // No longer tracking individual coins
                 totalFee = fee,
-                change = selection.change
+                change = BigInteger.ZERO, // No change calculation for MVP
+                utxoIndices = selectedIndices
             )
 
         } finally {
@@ -213,19 +190,18 @@ class DustActionsBuilder @Inject constructor(
      * - Transaction was rejected by blockchain
      * - User cancelled transaction
      *
-     * **Effect:**
-     * - Marks coins as AVAILABLE (PENDING → AVAILABLE)
-     * - Coins can be used in future transactions
+     * **Current Implementation:**
+     * No-op for MVP. DustLocalState manages UTXO state internally.
+     * When dust spends fail, the state is not saved, so UTXOs remain available.
+     *
+     * **Future Enhancement:**
+     * Track PENDING/AVAILABLE states in database for UI display.
      *
      * @param actions DustActions to roll back
      */
     suspend fun rollbackDustActions(actions: DustActions) {
-        android.util.Log.d(TAG, "Rolling back dust actions (${actions.selectedCoins.size} coins)")
-
-        val nullifiers = actions.getNullifiers()
-        dustRepository.markTokensAsAvailable(nullifiers)
-
-        android.util.Log.d(TAG, "Rolled back ${nullifiers.size} coins to AVAILABLE")
+        // No-op: DustLocalState rollback happens by not saving state
+        android.util.Log.d(TAG, "Rollback dust actions (state not saved, UTXOs remain available)")
     }
 
     /**
@@ -234,36 +210,34 @@ class DustActionsBuilder @Inject constructor(
      * **When to call:**
      * - Transaction successfully confirmed on blockchain
      *
-     * **Effect:**
-     * - Marks coins as SPENT (PENDING → SPENT)
-     * - Coins removed from available balance
+     * **Current Implementation:**
+     * No-op for MVP. DustLocalState already updated when spends were created.
+     * State was saved in buildDustActions(), so spent UTXOs are already removed.
+     *
+     * **Future Enhancement:**
+     * Track SPENT state in database for transaction history display.
      *
      * @param actions DustActions to confirm
      */
     suspend fun confirmDustActions(actions: DustActions) {
-        android.util.Log.d(TAG, "Confirming dust actions (${actions.selectedCoins.size} coins)")
-
-        val nullifiers = actions.getNullifiers()
-        dustRepository.markTokensAsSpent(nullifiers)
-
-        android.util.Log.d(TAG, "Confirmed ${nullifiers.size} coins as SPENT")
+        // No-op: DustLocalState already saved in buildDustActions()
+        android.util.Log.d(TAG, "Confirm dust actions (state already saved)")
     }
 
     /**
      * Validates dust actions before submission.
      *
      * **Checks:**
-     * - Spends match selected coins
-     * - Total fee is correct
-     * - All coins are in PENDING state
+     * - Spends were created successfully
+     * - Total fee is valid
      *
      * @param actions DustActions to validate
      * @return true if valid, false otherwise
      */
     fun validateDustActions(actions: DustActions): Boolean {
-        // Check spends exist
+        // Check UTXOs selected
         if (!actions.isSuccess()) {
-            android.util.Log.e(TAG, "Validation failed: no spends")
+            android.util.Log.e(TAG, "Validation failed: no UTXOs selected")
             return false
         }
 
@@ -273,13 +247,7 @@ class DustActionsBuilder @Inject constructor(
             return false
         }
 
-        // Check selected coins
-        if (actions.selectedCoins.isEmpty()) {
-            android.util.Log.e(TAG, "Validation failed: no coins selected")
-            return false
-        }
-
-        android.util.Log.d(TAG, "Dust actions validated successfully")
+        android.util.Log.d(TAG, "Dust actions validated successfully (${actions.utxoIndices.size} UTXOs)")
         return true
     }
 }

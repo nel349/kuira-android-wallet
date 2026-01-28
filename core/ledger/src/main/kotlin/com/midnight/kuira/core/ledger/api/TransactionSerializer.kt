@@ -96,8 +96,8 @@ class FfiTransactionSerializer : TransactionSerializer {
             commitment  // CRITICAL: Use same binding_commitment from signing
         ) ?: throw IllegalStateException("FFI SCALE serialization failed")
 
-        // Clear binding_commitment after use
-        bindingCommitment = null
+        // DON'T clear binding_commitment here - it may be needed for serializeWithDust() later
+        // It will be cleared after serializeWithDust() completes
 
         return hexResult
     }

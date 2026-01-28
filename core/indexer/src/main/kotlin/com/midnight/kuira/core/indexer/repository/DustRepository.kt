@@ -62,7 +62,8 @@ import javax.inject.Singleton
 class DustRepository @Inject constructor(
     private val dustDao: DustDao,
     @DustStateDataStore private val dustStateDataStore: DataStore<Preferences>,
-    private val balanceCalculator: DustBalanceCalculator
+    private val balanceCalculator: DustBalanceCalculator,
+    private val indexerClient: com.midnight.kuira.core.indexer.api.IndexerClient
 ) {
     companion object {
         private const val TAG = "DustRepository"
@@ -307,6 +308,100 @@ class DustRepository @Inject constructor(
     // ========== Synchronization ==========
 
     /**
+     * Sync dust from blockchain (query events and replay into local state).
+     *
+     * **Production Method:**
+     * This is the main entry point for dust synchronization.
+     * Call this when loading balances to ensure dust is up-to-date.
+     *
+     * **Process:**
+     * 1. Query dust events from indexer (scans recent blocks)
+     * 2. Create or load DustLocalState
+     * 3. Replay events into state (using dust secret key)
+     * 4. Sync tokens from state to database cache
+     * 5. Save updated state to persistent storage
+     *
+     * **Requirements:**
+     * - Dust must be registered on-chain (via Lace or dApp)
+     * - Dust secret key must be derived from wallet seed at m/44'/2400'/0'/2/0
+     *
+     * @param address Wallet address to sync dust for
+     * @param dustSeed 32-byte dust secret key (derived at role 2, index 0)
+     * @param maxBlocks Number of recent blocks to scan (default: 100)
+     * @return true if sync succeeded, false if no dust registered or sync failed
+     */
+    suspend fun syncFromBlockchain(
+        address: String,
+        dustSeed: ByteArray,
+        maxBlocks: Int = 100
+    ): Boolean {
+        android.util.Log.d(TAG, "Syncing dust from blockchain for $address")
+
+        try {
+            // Step 1: Query dust events from indexer
+            android.util.Log.d(TAG, "Querying dust events (scanning last $maxBlocks blocks)...")
+            val eventsHex = indexerClient.queryDustEvents(maxBlocks)
+
+            if (eventsHex.isEmpty()) {
+                android.util.Log.d(TAG, "No dust events found - dust not registered yet")
+                return false
+            }
+
+            android.util.Log.d(TAG, "Retrieved ${eventsHex.length / 2} bytes of dust events")
+
+            // Step 2: Create or load DustLocalState
+            val existingState = getSerializedState(address)
+            val initialState = if (existingState != null) {
+                android.util.Log.d(TAG, "Loading existing dust state")
+                DustLocalState.deserialize(existingState)
+            } else {
+                android.util.Log.d(TAG, "Creating new dust state")
+                DustLocalState.create()
+            }
+
+            if (initialState == null) {
+                android.util.Log.e(TAG, "Failed to create/load DustLocalState")
+                return false
+            }
+
+            try {
+                // Step 3: Replay events into state
+                android.util.Log.d(TAG, "Replaying dust events into state...")
+                val restoredState = initialState.replayEvents(dustSeed, eventsHex)
+
+                if (restoredState == null) {
+                    android.util.Log.e(TAG, "Failed to replay dust events")
+                    return false
+                }
+
+                try {
+                    val utxoCount = restoredState.getUtxoCount()
+                    android.util.Log.d(TAG, "Replay complete: $utxoCount UTXOs in state")
+
+                    // Step 4: Sync tokens from state to database
+                    syncTokensFromState(address, restoredState)
+
+                    // Step 5: Save updated state
+                    saveState(address, restoredState)
+
+                    android.util.Log.d(TAG, "✅ Dust sync complete for $address")
+                    return true
+
+                } finally {
+                    restoredState.close()
+                }
+
+            } finally {
+                initialState.close()
+            }
+
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Failed to sync dust from blockchain", e)
+            return false
+        }
+    }
+
+    /**
      * Sync dust tokens from DustLocalState to database cache.
      *
      * **When to call:**
@@ -335,19 +430,78 @@ class DustRepository @Inject constructor(
         }
 
         try {
-            // Get UTXO count
-            val utxoCount = state.getUtxoCount()
-            android.util.Log.d(TAG, "Syncing $utxoCount UTXOs to cache for $address")
-
-            // TODO: Parse UTXO JSON and insert into database
-            // For now, we rely on event processing to populate the cache
-
+            syncTokensFromState(address, state)
         } finally {
             // Always close state
             state.close()
         }
 
         android.util.Log.d(TAG, "Synced dust tokens for $address")
+    }
+
+    /**
+     * Sync tokens from DustLocalState to database (internal helper).
+     *
+     * **Simplified MVP Implementation:**
+     * Creates placeholder entries in database for each UTXO.
+     * Actual values are calculated from DustLocalState when needed for fee payment.
+     *
+     * **Why simplified:**
+     * - DustLocalState UTXOs are SCALE-encoded (complex to parse)
+     * - DustTokenEntity requires many fields not easily extracted
+     * - For fee payment, DustActionsBuilder uses DustLocalState directly anyway
+     * - Database is only for checking if dust exists
+     *
+     * **What we store:**
+     * - Placeholder entries with UTXO index as nullifier
+     * - Minimal required fields to satisfy database schema
+     * - Marks as AVAILABLE for coin selection
+     *
+     * @param address Wallet address
+     * @param state DustLocalState instance (already open)
+     */
+    private suspend fun syncTokensFromState(address: String, state: DustLocalState) {
+        val utxoCount = state.getUtxoCount()
+        android.util.Log.d(TAG, "Syncing $utxoCount UTXOs to database")
+
+        if (utxoCount == 0) {
+            android.util.Log.d(TAG, "No UTXOs to sync")
+            return
+        }
+
+        try {
+            // Create simplified token entities
+            val tokens = mutableListOf<DustTokenEntity>()
+            val currentTime = currentTimeMillis()
+
+            for (i in 0 until utxoCount) {
+                // Create placeholder token with minimal info
+                // Use index as nullifier for now (will improve in Phase 2F)
+                val token = DustTokenEntity(
+                    nullifier = "utxo_$i",  // Placeholder nullifier
+                    address = address,
+                    initialValue = "0",  // Will calculate from state when needed
+                    creationTimeMillis = currentTime,
+                    nightUtxoId = "unknown",  // Not extracted from UTXO yet
+                    nightValueStars = "0",
+                    dustCapacitySpecks = "0",
+                    generationRatePerSecond = "0",
+                    state = com.midnight.kuira.core.indexer.database.UtxoState.AVAILABLE,
+                    lastUpdatedMillis = currentTime
+                )
+                tokens.add(token)
+            }
+
+            // Clear old tokens and insert new ones
+            dustDao.deleteTokensForAddress(address)
+            dustDao.insertTokens(tokens)
+
+            android.util.Log.d(TAG, "✅ Synced $utxoCount placeholder tokens to database")
+            android.util.Log.d(TAG, "⚠️  Using simplified sync - actual values calculated from DustLocalState")
+
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Failed to sync tokens to database", e)
+        }
     }
 
     /**
@@ -396,6 +550,22 @@ class DustRepository @Inject constructor(
 
         saveSerializedState(address, serialized)
         android.util.Log.d(TAG, "Saved updated dust state for $address")
+    }
+
+    /**
+     * Check if cached dust state exists for an address.
+     *
+     * **Use Case:**
+     * Before doing expensive blockchain sync, check if we already have dust state.
+     * This avoids blocking transactions with 5-10 minute sync operations.
+     *
+     * @param address Wallet address
+     * @return true if cached state exists, false otherwise
+     */
+    suspend fun hasCachedState(address: String): Boolean {
+        val key = dustStateKey(address)
+        val hexString = dustStateDataStore.data.first()[key]
+        return hexString != null
     }
 
     // ========== Persistence ==========

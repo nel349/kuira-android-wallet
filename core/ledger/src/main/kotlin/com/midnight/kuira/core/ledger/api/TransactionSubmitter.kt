@@ -53,7 +53,8 @@ class TransactionSubmitter(
     private val proofServerClient: ProofServerClient,
     private val indexerClient: IndexerClient,
     private val serializer: TransactionSerializer,
-    private val dustActionsBuilder: DustActionsBuilder? = null
+    private val dustActionsBuilder: DustActionsBuilder? = null,
+    private val dustRepository: com.midnight.kuira.core.indexer.repository.DustRepository? = null
 ) {
 
     /**
@@ -240,8 +241,14 @@ class TransactionSubmitter(
             "Initialize TransactionSubmitter with DustActionsBuilder."
         }
 
-        // Step 1: Serialize transaction to calculate fee
-        val serializedHex = try {
+        // Validate DustRepository is available
+        checkNotNull(dustRepository) {
+            "DustRepository required for dust fee payment. " +
+            "Initialize TransactionSubmitter with DustRepository."
+        }
+
+        // Step 1: Serialize base transaction (without dust)
+        val baseSerializedHex = try {
             serializer.serialize(signedIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Serialization failed", e)
@@ -251,14 +258,35 @@ class TransactionSubmitter(
             )
         }
 
-        Log.d(TAG, "Serialized transaction: ${serializedHex.length} hex chars")
+        Log.d(TAG, "Base transaction serialized: ${baseSerializedHex.length} hex chars")
         Log.d(TAG, "Ledger params: ${ledgerParamsHex.length} hex chars")
-        Log.d(TAG, "Transaction hex prefix: ${serializedHex.take(100)}")
 
-        // Step 2: Build dust actions for fee payment
+        // Step 2: Prove and seal base transaction for fee calculation
+        Log.d(TAG, "Proving base transaction for fee calculation...")
+        val baseProvenHex = try {
+            proofServerClient.proveTransaction(baseSerializedHex)
+        } catch (e: ProofServerException) {
+            Log.e(TAG, "Failed to prove base transaction", e)
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Proof generation failed: ${e.message}"
+            )
+        }
+
+        Log.d(TAG, "Sealing base transaction for fee calculation...")
+        val ffiSerializer = serializer as? com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
+            ?: throw IllegalStateException("FFI serializer required")
+
+        val baseSealedHex = ffiSerializer.sealProvenTransaction(baseProvenHex)
+            ?: throw IllegalStateException("Sealing failed")
+
+        Log.d(TAG, "Base transaction sealed: ${baseSealedHex.length} hex chars")
+
+        // Step 3: Calculate fee on sealed transaction
+        Log.d(TAG, "Calculating transaction fee...")
         val dustActions = try {
             dustActionsBuilder.buildDustActions(
-                transactionHex = serializedHex,
+                transactionHex = baseSealedHex,  // Use SEALED transaction
                 ledgerParamsHex = ledgerParamsHex,
                 address = fromAddress,
                 seed = seed
@@ -272,46 +300,177 @@ class TransactionSubmitter(
         }
 
         if (dustActions == null || !dustActions.isSuccess()) {
+            Log.e(TAG, "Insufficient dust balance (required: ${dustActions?.totalFee} Specks)")
             return SubmissionResult.Failed(
                 txHash = null,
                 reason = "Insufficient dust balance to cover fee (required: ${dustActions?.totalFee} Specks)"
             )
         }
 
-        // Step 3: Add dust actions to intent
-        // TODO: Implement Intent.addDustActions() method
-        // val intentWithFees = signedIntent.addDustActions(dustActions.spends)
+        Log.d(TAG, "Dust actions built: ${dustActions.utxoIndices.size} UTXOs, fee=${dustActions.totalFee} Specks")
 
-        // Step 4: Submit transaction
-        // TODO: Use intentWithFees instead of signedIntent
-        val result = submitAndWait(
-            signedIntent = signedIntent, // TODO: Replace with intentWithFees
-            fromAddress = fromAddress,
-            timeoutMs = timeoutMs
-        )
-
-        // Step 5: Update dust coin state based on result
-        when (result) {
-            is SubmissionResult.Success -> {
-                // Transaction confirmed: mark coins as SPENT
-                try {
-                    dustActionsBuilder.confirmDustActions(dustActions)
-                } catch (e: Exception) {
-                    // Log but don't fail - transaction already succeeded
-                    android.util.Log.e("TransactionSubmitter", "Failed to confirm dust actions", e)
-                }
-            }
-            is SubmissionResult.Failed, is SubmissionResult.Pending -> {
-                // Transaction failed or timeout: rollback coins to AVAILABLE
-                try {
-                    dustActionsBuilder.rollbackDustActions(dustActions)
-                } catch (e: Exception) {
-                    android.util.Log.e("TransactionSubmitter", "Failed to rollback dust actions", e)
-                }
-            }
+        // Step 3: Load DustLocalState
+        val dustState = dustRepository.loadState(fromAddress)
+        if (dustState == null) {
+            Log.e(TAG, "Failed to load dust state for $fromAddress")
+            return SubmissionResult.Failed(
+                txHash = null,
+                reason = "Failed to load dust state"
+            )
         }
 
-        return result
+        try {
+            // Step 4: Build JSON for selected dust UTXOs
+            val dustUtxosJson = buildDustUtxosJson(dustActions.utxoIndices, dustActions.totalFee)
+            Log.d(TAG, "Dust UTXOs JSON: $dustUtxosJson")
+
+            // Step 5: Extract transaction components from signed intent
+            val offer = signedIntent.guaranteedUnshieldedOffer!!
+            val inputs = offer.inputs
+            val outputs = offer.outputs
+            val signatures = offer.signatures
+
+            // Step 6: Serialize WITH dust (calls state.spend() internally in Rust FFI)
+            Log.d(TAG, "Serializing transaction with dust fees...")
+            val ffiSerializer = serializer as? com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
+                ?: throw IllegalStateException("FFI serializer required for dust fee payment")
+
+            // IMPORTANT: Do NOT call getSigningMessageForInput() again here!
+            // The binding_randomness from the original signing (when user signed the transaction)
+            // is already stored in the FFI layer. Calling getSigningMessageForInput() would
+            // generate a NEW random binding_randomness, which would cause signature verification
+            // to fail because the signature was created for the ORIGINAL binding_randomness.
+            //
+            // The stored binding_randomness will be automatically used by serializeWithDust().
+
+            val unprovenTxHex = ffiSerializer.serializeWithDust(
+                inputs = inputs,
+                outputs = outputs,
+                signatures = signatures,
+                dustState = dustState,
+                seed = seed,
+                dustUtxosJson = dustUtxosJson,
+                ttl = signedIntent.ttl
+            )
+
+            Log.d(TAG, "Transaction with dust serialized (unproven): ${unprovenTxHex.length} hex chars")
+
+            // Step 7: Save updated dust state
+            dustRepository.saveState(fromAddress, dustState)
+            Log.d(TAG, "Dust state saved")
+
+            // Step 8: Prove transaction
+            Log.d(TAG, "🔐 Proving transaction via proof server...")
+            val provenTxHex = try {
+                proofServerClient.proveTransaction(unprovenTxHex)
+            } catch (e: ProofServerException) {
+                Log.e(TAG, "❌ Proof server error", e)
+                // Rollback dust actions on proving failure
+                dustActionsBuilder.rollbackDustActions(dustActions)
+                return SubmissionResult.Failed(
+                    txHash = null,
+                    reason = "Proof generation failed: ${e.message}"
+                )
+            }
+
+            Log.d(TAG, "✅ Transaction proven: ${provenTxHex.length} hex chars")
+
+            // Step 9: Seal proven transaction
+            Log.d(TAG, "🔐 Sealing proven transaction...")
+            val sealedTxHex = ffiSerializer.sealProvenTransaction(provenTxHex)
+                ?: throw IllegalStateException("Sealing returned null")
+
+            Log.d(TAG, "✅ Transaction sealed: ${sealedTxHex.length} hex chars")
+
+            // Step 10: Submit to node
+            val txHash = try {
+                nodeRpcClient.submitTransaction(sealedTxHex)
+            } catch (e: TransactionRejected) {
+                // Rollback dust actions on node rejection
+                dustActionsBuilder.rollbackDustActions(dustActions)
+                return SubmissionResult.Failed(
+                    txHash = e.txHash,
+                    reason = "Transaction rejected by node: ${e.reason}"
+                )
+            } catch (e: NodeRpcException) {
+                // Rollback dust actions on RPC error
+                dustActionsBuilder.rollbackDustActions(dustActions)
+                return SubmissionResult.Failed(
+                    txHash = null,
+                    reason = "Node RPC error: ${e.message}"
+                )
+            }
+
+            Log.d(TAG, "✅ Transaction submitted: $txHash")
+
+            // Step 11: Wait for confirmation
+            val result = try {
+                withTimeout(timeoutMs) {
+                    waitForConfirmation(fromAddress, txHash)
+                }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                // Timeout - transaction may still be pending
+                // Don't rollback dust actions yet (might still confirm)
+                SubmissionResult.Pending(
+                    txHash = txHash,
+                    reason = "Confirmation timeout after ${timeoutMs}ms (transaction may still be processing)"
+                )
+            }
+
+            // Step 12: Update dust coin state based on final result
+            when (result) {
+                is SubmissionResult.Success -> {
+                    // Transaction confirmed: mark coins as SPENT
+                    try {
+                        dustActionsBuilder.confirmDustActions(dustActions)
+                        Log.d(TAG, "✅ Dust coins marked as SPENT")
+                    } catch (e: Exception) {
+                        // Log but don't fail - transaction already succeeded
+                        Log.e(TAG, "Failed to confirm dust actions", e)
+                    }
+                }
+                is SubmissionResult.Failed -> {
+                    // Transaction failed: rollback coins to AVAILABLE
+                    try {
+                        dustActionsBuilder.rollbackDustActions(dustActions)
+                        Log.d(TAG, "⚠️  Dust coins rolled back to AVAILABLE")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to rollback dust actions", e)
+                    }
+                }
+                is SubmissionResult.Pending -> {
+                    // Timeout: leave coins as PENDING for manual resolution
+                    Log.w(TAG, "⏳ Transaction pending - dust coins left in PENDING state")
+                }
+            }
+
+            return result
+
+        } finally {
+            // Always close dust state
+            dustState.close()
+        }
+    }
+
+    /**
+     * Builds JSON array of dust UTXO selections for Rust FFI.
+     *
+     * Format: [{"utxo_index": 0, "v_fee": "1000000"}, ...]
+     *
+     * @param utxoIndices Indices of UTXOs to spend
+     * @param totalFee Total fee to be paid (only first UTXO pays the fee)
+     * @return JSON string for Rust FFI
+     */
+    private fun buildDustUtxosJson(
+        utxoIndices: List<Int>,
+        totalFee: java.math.BigInteger
+    ): String {
+        val utxos = utxoIndices.mapIndexed { orderIndex, utxoIndex ->
+            // Only first UTXO pays the full fee, others pay 0
+            val vFee = if (orderIndex == 0) totalFee.toString() else "0"
+            """{"utxo_index": $utxoIndex, "v_fee": "$vFee"}"""
+        }
+        return "[${utxos.joinToString(",")}]"
     }
 
     /**

@@ -5,17 +5,20 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.midnight.kuira.core.crypto.bip32.DerivedKey
 import com.midnight.kuira.core.crypto.bip32.HDWallet
 import com.midnight.kuira.core.crypto.bip32.MidnightKeyRole
 import com.midnight.kuira.core.crypto.bip39.BIP39
+import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.TokenTypeMapper
 import com.midnight.kuira.core.indexer.repository.BalanceRepository
+import com.midnight.kuira.core.indexer.repository.DustRepository
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
+import com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
 import com.midnight.kuira.core.ledger.api.TransactionSerializer
 import com.midnight.kuira.core.ledger.api.TransactionSubmitter
 import com.midnight.kuira.core.ledger.builder.UnshieldedTransactionBuilder
 import com.midnight.kuira.core.ledger.model.Intent
-import com.midnight.kuira.core.ledger.model.UnshieldedOffer
 import com.midnight.kuira.core.ledger.model.UtxoOutput
 import com.midnight.kuira.core.ledger.signer.TransactionSigner
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -71,7 +74,8 @@ class SendViewModel @Inject constructor(
     private val utxoManager: UtxoManager,
     private val transactionSubmitter: TransactionSubmitter,
     private val serializer: TransactionSerializer,
-    private val indexerClient: com.midnight.kuira.core.indexer.api.IndexerClient
+    private val indexerClient: IndexerClient,
+    private val dustRepository: DustRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<SendUiState>(SendUiState.Idle())
@@ -173,7 +177,8 @@ class SendViewModel @Inject constructor(
             // CRITICAL SECURITY: Derive keys once and wipe in finally block
             var seed: ByteArray? = null
             var hdWallet: HDWallet? = null
-            var derivedKey: com.midnight.kuira.core.crypto.bip32.DerivedKey? = null
+            var derivedKey: DerivedKey? = null
+            var dustKey: DerivedKey? = null
 
             try {
                 // Step 1: Validate inputs
@@ -251,13 +256,74 @@ class SendViewModel @Inject constructor(
                 val signedIntent = signIntent(unsignedIntent, privateKey)
                 Log.d(TAG, "Transaction signed successfully")
 
-                // Step 6: Submit transaction (Phase 2: without fees)
-                _state.value = SendUiState.Submitting
-                Log.d(TAG, "Submitting transaction to network (without dust fees)")
+                // Step 5.5: Check dust state (for fee payment)
+                // Note: Dust must be synced once after registration in Lace
+                // We don't sync during transaction because it takes 5-10 minutes
+                Log.d(TAG, "Checking dust state...")
+                val hasCachedDust = dustRepository.hasCachedState(fromAddress)
 
-                val result = transactionSubmitter.submitAndWait(
+                if (!hasCachedDust) {
+                    Log.d(TAG, "⚠️  No cached dust state found - first-time sync required")
+
+                    // For MVP: Sync dust now (will take 5-10 minutes)
+                    Log.d(TAG, "Starting one-time dust sync (this will take 5-10 minutes)...")
+                    _state.value = SendUiState.Building // Show "Building" state during sync
+
+                    val dustKey = hdWallet
+                        .selectAccount(0)
+                        .selectRole(MidnightKeyRole.DUST)
+                        .deriveKeyAt(0)
+
+                    val dustSeed = dustKey.privateKeyBytes
+                    try {
+                        val dustSynced = dustRepository.syncFromBlockchain(
+                            address = fromAddress,
+                            dustSeed = dustSeed,
+                            maxBlocks = 100
+                        )
+
+                        if (!dustSynced) {
+                            Log.e(TAG, "No dust found on blockchain - register dust in Lace first")
+                            _state.value = SendUiState.Error(
+                                message = "No dust registered. Please register dust in Lace wallet first."
+                            )
+                            return@launch
+                        }
+
+                        Log.d(TAG, "✅ Dust synced successfully (cached for future transactions)")
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to sync dust", e)
+                        _state.value = SendUiState.Error(
+                            message = "Failed to sync dust: ${e.message}"
+                        )
+                        return@launch
+                    } finally {
+                        // Wipe dust seed from memory
+                        java.util.Arrays.fill(dustSeed, 0.toByte())
+                        dustKey.clear()
+                    }
+                } else {
+                    Log.d(TAG, "✅ Using cached dust state (fast)")
+                }
+
+                // Step 6: Submit transaction WITH dust fees (Phase 2E)
+                _state.value = SendUiState.Submitting
+                Log.d(TAG, "Submitting transaction to network WITH dust fees")
+
+                // Derive dust seed for fee payment
+                dustKey = hdWallet!!
+                    .selectAccount(0)
+                    .selectRole(MidnightKeyRole.DUST)
+                    .deriveKeyAt(0)
+                val dustSeed = dustKey!!.privateKeyBytes
+
+                val result = transactionSubmitter.submitWithFees(
                     signedIntent = signedIntent,
-                    fromAddress = fromAddress
+                    ledgerParamsHex = ledgerParamsHex,
+                    fromAddress = fromAddress,
+                    seed = dustSeed, // Use dust seed, not root seed
+                    timeoutMs = 60_000L // 60 seconds
                 )
 
                 // Step 7: Handle result
@@ -319,6 +385,7 @@ class SendViewModel @Inject constructor(
                 // CRITICAL SECURITY: Wipe all key material from memory
                 seed?.let { java.util.Arrays.fill(it, 0.toByte()) }
                 derivedKey?.clear()
+                dustKey?.clear()
                 hdWallet?.clear()
             }
         }
@@ -348,7 +415,7 @@ class SendViewModel @Inject constructor(
         val signatures = offer.inputs.mapIndexed { index, _ ->
             // Get signing message for this input
             // Note: Cast to FfiTransactionSerializer to access signing message method
-            val ffiSerializer = serializer as? com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
+            val ffiSerializer = serializer as? FfiTransactionSerializer
                 ?: throw IllegalStateException("Serializer must be FfiTransactionSerializer")
 
             val signingMessageHex = ffiSerializer.getSigningMessageForInput(

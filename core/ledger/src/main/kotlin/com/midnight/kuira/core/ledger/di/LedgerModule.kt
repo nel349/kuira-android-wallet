@@ -9,7 +9,6 @@ import com.midnight.kuira.core.ledger.api.ProofServerClientImpl
 import com.midnight.kuira.core.ledger.api.TransactionSerializer
 import com.midnight.kuira.core.ledger.api.TransactionSubmitter
 import com.midnight.kuira.core.ledger.fee.DustActionsBuilder
-import com.midnight.kuira.core.ledger.fee.DustCoinSelector
 import com.midnight.kuira.core.ledger.fee.DustSpendCreator
 import com.midnight.kuira.core.ledger.fee.FeeCalculator
 import dagger.Module
@@ -26,10 +25,11 @@ import javax.inject.Singleton
  * - ProofServerClient: HTTP client for Midnight proof server (Phase 2)
  * - TransactionSerializer: SCALE serialization using Rust FFI
  * - TransactionSubmitter: Transaction submission orchestrator
+ * - FeeCalculator: Calculates transaction fees
+ * - DustSpendCreator: Creates dust spend actions
  *
  * **Note:**
- * DustActionsBuilder and its dependencies are auto-provided by Hilt
- * (@Inject constructors): DustRepository, DustCoinSelector, FeeCalculator, DustSpendCreator
+ * DustActionsBuilder is auto-provided by Hilt via @Inject constructor
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -125,16 +125,6 @@ object LedgerModule {
     fun provideDustSpendCreator(): DustSpendCreator = DustSpendCreator
 
     /**
-     * Provide DustCoinSelector.
-     *
-     * **Note:** DustCoinSelector has @Inject constructor with no parameters,
-     * but we provide it explicitly for clarity.
-     */
-    @Provides
-    @Singleton
-    fun provideDustCoinSelector(): DustCoinSelector = DustCoinSelector()
-
-    /**
      * Provide TransactionSubmitter singleton.
      *
      * **Singleton Scope:** Stateless orchestrator, safe to share.
@@ -145,8 +135,9 @@ object LedgerModule {
      * - IndexerClient: Tracks transaction confirmation
      * - TransactionSerializer: Serializes to SCALE
      * - DustActionsBuilder: Builds dust fee payment (optional, Phase 2E)
+     * - DustRepository: Manages dust state (optional, Phase 2E)
      *
-     * **Note:** DustActionsBuilder is auto-provided by Hilt via @Inject constructor
+     * **Note:** DustActionsBuilder and DustRepository are auto-provided by Hilt via @Inject constructor
      */
     @Provides
     @Singleton
@@ -155,14 +146,16 @@ object LedgerModule {
         proofServerClient: ProofServerClient,
         indexerClient: IndexerClient,
         serializer: TransactionSerializer,
-        dustActionsBuilder: DustActionsBuilder
+        dustActionsBuilder: DustActionsBuilder,
+        dustRepository: com.midnight.kuira.core.indexer.repository.DustRepository
     ): TransactionSubmitter {
         return TransactionSubmitter(
             nodeRpcClient = nodeRpcClient,
             proofServerClient = proofServerClient,
             indexerClient = indexerClient,
             serializer = serializer,
-            dustActionsBuilder = dustActionsBuilder
+            dustActionsBuilder = dustActionsBuilder,
+            dustRepository = dustRepository
         )
     }
 }
