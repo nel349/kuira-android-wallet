@@ -86,9 +86,26 @@ class NodeRpcError(
  * - TTL expired
  * - Invalid format
  *
+ * **Custom Error Codes (from node):**
+ * - 115: InputNotInUtxos (UTXO doesn't exist or already spent)
+ * - 139: EffectsCheckFailure (signature verification failed)
+ *
  * **Recovery:** Don't retry (fix transaction)
  */
 class TransactionRejected(
     val reason: String,
-    val txHash: String? = null
-) : NodeRpcException("Transaction rejected: $reason${txHash?.let { " (hash: $it)" } ?: ""}")
+    val txHash: String? = null,
+    val customErrorCode: Int? = null
+) : NodeRpcException("Transaction rejected: $reason${txHash?.let { " (hash: $it)" } ?: ""}") {
+
+    companion object {
+        /** UTXO doesn't exist on-chain (already spent or never existed) */
+        const val ERROR_INPUT_NOT_IN_UTXOS = 115
+
+        /** Signature verification failed */
+        const val ERROR_EFFECTS_CHECK_FAILURE = 139
+    }
+
+    /** True if this error indicates the UTXO was already spent */
+    val isStaleUtxo: Boolean get() = customErrorCode == ERROR_INPUT_NOT_IN_UTXOS
+}

@@ -83,31 +83,27 @@ class GraphQLWebSocketClient(
         sendMessage(GraphQLWebSocketMessage.ConnectionInit())
 
         // Wait for connection_ack with timeout
+        // IMPORTANT: Don't start a separate coroutine here - it would race with message processing!
+        // Instead, read frames directly until we get connection_ack
         withTimeout(connectionTimeout) {
-            val ackReceived = CompletableDeferred<Unit>()
-
-            scope.launch {
-                for (frame in session!!.incoming) {
-                    when (frame) {
-                        is Frame.Text -> {
-                            val text = frame.readText()
-                            val message = parseMessage(text)
-                            if (message is GraphQLWebSocketMessage.ConnectionAck) {
-                                connected.set(true)
-                                ackReceived.complete(Unit)
-                            }
+            for (frame in session!!.incoming) {
+                when (frame) {
+                    is Frame.Text -> {
+                        val text = frame.readText()
+                        val message = parseMessage(text)
+                        if (message is GraphQLWebSocketMessage.ConnectionAck) {
+                            connected.set(true)
+                            break  // Got ack, stop consuming and let message processing take over
                         }
-                        else -> {
-                            // Ignore other frame types during connection phase
-                        }
+                    }
+                    else -> {
+                        // Ignore other frame types during connection phase
                     }
                 }
             }
-
-            ackReceived.await()
         }
 
-        // Start message processing loop
+        // Start message processing loop - NOW it won't miss any messages
         startMessageProcessing()
     }
 

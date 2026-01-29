@@ -86,4 +86,5 @@ sealed class SendUiState {
         val message: String,
         val throwable: Throwable? = null
     ) : SendUiState()
+
 }

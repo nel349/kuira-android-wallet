@@ -1,5 +1,6 @@
 package com.midnight.kuira.core.indexer.integration
 
+import android.content.Context
 import android.util.Log
 import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.database.UtxoDatabase
@@ -48,6 +49,7 @@ import kotlinx.coroutines.withTimeout
  * @Test
  * fun integrationTest() = runTest {
  *     // Load real data via subscription (production code path)
+ *     // Note: context parameter is required for resync detection
  *     val utxoCount = TestDataLoader.loadFromIndexer(
  *         indexerClient = indexerClient,
  *         utxoManager = utxoManager,
@@ -99,6 +101,7 @@ object TestDataLoader {
      * @throws Exception if subscription fails or times out
      */
     suspend fun loadFromIndexer(
+        context: Context,
         indexerClient: IndexerClient,
         utxoManager: UtxoManager,
         syncStateManager: SyncStateManager,
@@ -110,6 +113,7 @@ object TestDataLoader {
 
         // Create subscription manager with production components
         val subscriptionManager = SubscriptionManager(
+            context = context,
             indexerClient = indexerClient,
             utxoManager = utxoManager,
             syncStateManager = syncStateManager
@@ -172,6 +176,7 @@ object TestDataLoader {
      * @param onProgress Callback for each sync state change
      */
     suspend fun loadFromIndexerWithProgress(
+        context: Context,
         indexerClient: IndexerClient,
         utxoManager: UtxoManager,
         syncStateManager: SyncStateManager,
@@ -183,6 +188,7 @@ object TestDataLoader {
         Log.d(TAG, "Loading UTXOs from indexer with progress monitoring for: $address")
 
         val subscriptionManager = SubscriptionManager(
+            context = context,
             indexerClient = indexerClient,
             utxoManager = utxoManager,
             syncStateManager = syncStateManager

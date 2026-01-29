@@ -10,9 +10,11 @@ import com.midnight.kuira.core.crypto.bip32.HDWallet
 import com.midnight.kuira.core.crypto.bip32.MidnightKeyRole
 import com.midnight.kuira.core.crypto.bip39.BIP39
 import com.midnight.kuira.core.indexer.api.IndexerClient
+import com.midnight.kuira.core.indexer.di.SubscriptionManagerFactory
 import com.midnight.kuira.core.indexer.model.TokenTypeMapper
 import com.midnight.kuira.core.indexer.repository.BalanceRepository
 import com.midnight.kuira.core.indexer.repository.DustRepository
+import com.midnight.kuira.core.indexer.sync.SyncState
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import com.midnight.kuira.core.ledger.api.FfiTransactionSerializer
 import com.midnight.kuira.core.ledger.api.TransactionSerializer
@@ -22,7 +24,10 @@ import com.midnight.kuira.core.ledger.model.Intent
 import com.midnight.kuira.core.ledger.model.UtxoOutput
 import com.midnight.kuira.core.ledger.signer.TransactionSigner
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
@@ -75,10 +80,14 @@ class SendViewModel @Inject constructor(
     private val transactionSubmitter: TransactionSubmitter,
     private val serializer: TransactionSerializer,
     private val indexerClient: IndexerClient,
-    private val dustRepository: DustRepository
+    private val dustRepository: DustRepository,
+    private val subscriptionManagerFactory: SubscriptionManagerFactory
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<SendUiState>(SendUiState.Idle())
+
+    // Background sync job for UTXO recovery after error 115
+    private var syncJob: Job? = null
     val state: StateFlow<SendUiState> = _state.asStateFlow()
 
     /**
@@ -348,6 +357,19 @@ class SendViewModel @Inject constructor(
                             message = "Transaction timeout: ${result.reason}"
                         )
                     }
+                    is TransactionSubmitter.SubmissionResult.StaleUtxo -> {
+                        Log.w(TAG, "⚠️ Stale UTXO detected - syncing fresh UTXOs")
+                        Log.w(TAG, "   Failed UTXO IDs: ${result.failedUtxoIds}")
+
+                        // Mark stale UTXOs as SPENT
+                        Log.d(TAG, "Marking ${result.failedUtxoIds.size} stale UTXOs as SPENT")
+                        utxoManager.markUtxosAsSpent(result.failedUtxoIds)
+
+                        // Start a quick sync to get latest UTXOs
+                        // The subscription will sync any missing UTXOs (like change outputs)
+                        Log.d(TAG, "Starting quick sync to get latest UTXOs...")
+                        syncAndRetry(fromAddress)
+                    }
                 }
 
 
@@ -483,15 +505,85 @@ class SendViewModel @Inject constructor(
     }
 
     /**
-     * Reset to idle state.
+     * Reset to idle state and reload balance.
      *
-     * Call this after successful transaction to allow sending another.
+     * Call this after successful transaction or error to allow sending another.
+     * Reloads balance to ensure fresh data after any state changes.
+     *
+     * @param address The sender's address to reload balance for
      */
-    fun reset() {
-        _state.value = SendUiState.Idle()
+    fun reset(address: String) {
+        loadBalance(address)
+    }
+
+    /**
+     * Sync latest UTXOs and show error to allow retry.
+     *
+     * Called after error 115 (stale UTXO) to sync fresh data from blockchain.
+     * Waits for sync to reach "Synced" state (max 30 seconds) before showing error.
+     *
+     * @param address Address to sync UTXOs for
+     */
+    private fun syncAndRetry(address: String) {
+        // Cancel previous sync if running
+        syncJob?.cancel()
+
+        // Show syncing state
+        _state.value = SendUiState.Building  // Reuse Building state for "syncing"
+
+        syncJob = viewModelScope.launch {
+            try {
+                Log.d(TAG, "Quick sync: Creating subscription manager")
+                val subscriptionManager = subscriptionManagerFactory.create()
+
+                Log.d(TAG, "Quick sync: Starting subscription for $address (30s timeout)")
+
+                // Use timeout to prevent getting stuck
+                // Use first{} to stop as soon as we're synced (not collect which waits forever)
+                val synced = withTimeoutOrNull(QUICK_SYNC_TIMEOUT_MS) {
+                    subscriptionManager.startSubscription(address)
+                        .first { state ->
+                            Log.d(TAG, "Quick sync state: $state")
+                            state is SyncState.Synced
+                        }
+                    Log.d(TAG, "Quick sync: Synced!")
+                    true
+                }
+
+                if (synced != null) {
+                    Log.d(TAG, "Quick sync completed, loading fresh balance...")
+                } else {
+                    Log.w(TAG, "Quick sync timed out after ${QUICK_SYNC_TIMEOUT_MS}ms")
+                }
+
+                // Load fresh balance (even if timed out, there might be partial data)
+                loadBalance(address)
+
+                // Show error so user can retry
+                _state.value = SendUiState.Error(
+                    message = "Transaction failed - wallet was out of sync. Please try again."
+                )
+
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Normal cancellation, ignore
+                Log.d(TAG, "Quick sync cancelled")
+            } catch (e: Exception) {
+                Log.e(TAG, "Quick sync failed", e)
+                // Show error anyway - user can try again
+                _state.value = SendUiState.Error(
+                    message = "Transaction failed - please go back and try again."
+                )
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        syncJob?.cancel()
     }
 
     private companion object {
         private const val TAG = "SendViewModel"
+        private const val QUICK_SYNC_TIMEOUT_MS = 30_000L  // 30 seconds
     }
 }

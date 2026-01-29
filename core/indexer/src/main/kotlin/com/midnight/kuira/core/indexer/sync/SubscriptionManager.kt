@@ -52,6 +52,7 @@ import kotlin.math.pow
  * ```
  */
 class SubscriptionManager(
+    private val context: android.content.Context,
     private val indexerClient: IndexerClient,
     private val utxoManager: UtxoManager,
     private val syncStateManager: SyncStateManager
@@ -73,6 +74,41 @@ class SubscriptionManager(
 
     // Track last save time per address for throttling
     private val lastSaveTimestamps = mutableMapOf<String, Long>()
+
+    /**
+     * Check if a full resync is needed (e.g., after destructive database migration).
+     * If so, clears the sync state so the subscription replays all history.
+     *
+     * **Edge Cases Handled:**
+     * 1. Explicit flag from destructive migration callback
+     * 2. Database is empty but sync state indicates we've processed transactions
+     *    (e.g., user cleared app data manually, or database was wiped without callback)
+     */
+    private suspend fun checkAndHandleResyncNeeded(address: String) {
+        val prefs = context.getSharedPreferences("utxo_db_flags", android.content.Context.MODE_PRIVATE)
+
+        // Case 1: Explicit flag from destructive migration
+        if (prefs.getBoolean("needs_full_resync", false)) {
+            Log.w(TAG, "Full resync needed (database was recreated) - clearing sync state for $address")
+            syncStateManager.clearSyncState(address)
+            utxoManager.clearUtxos(address)
+            prefs.edit().putBoolean("needs_full_resync", false).apply()
+            Log.i(TAG, "Sync state and UTXOs cleared - will replay all history")
+            return
+        }
+
+        // Case 2: Sync state exists but database is empty (data cleared without callback)
+        // This catches cases where user clears app data, adb clear, etc.
+        val lastProcessedId = syncStateManager.getLastProcessedTransactionId(address)
+        if (lastProcessedId != null && lastProcessedId > 0) {
+            val utxoCount = utxoManager.getUnspentUtxos(address).size
+            if (utxoCount == 0) {
+                Log.w(TAG, "Database is empty but sync state shows tx ID $lastProcessedId - clearing sync state")
+                syncStateManager.clearSyncState(address)
+                Log.i(TAG, "Sync state cleared - will replay all history to repopulate UTXOs")
+            }
+        }
+    }
 
     /**
      * Start subscription for an address with automatic reconnection.
@@ -134,9 +170,16 @@ class SubscriptionManager(
         var latestTransactionId: Int? = null // Track latest for final save
         var syncTimeoutJob: Job? = null // Job for auto-sync timeout
 
+        // Check if full resync is needed (e.g., after destructive database migration)
+        checkAndHandleResyncNeeded(address)
+
         // Get resume point before starting subscription
         val lastId = syncStateManager.getLastProcessedTransactionId(address)
-        Log.d(TAG, "Starting subscription for $address from transaction ID: $lastId")
+        if (lastId == null) {
+            Log.i(TAG, "🔄 FULL SYNC: Starting subscription for $address from transaction ID: null (will replay ALL history)")
+        } else {
+            Log.i(TAG, "⏩ RESUME SYNC: Starting subscription for $address from transaction ID: $lastId")
+        }
         send(SyncState.Connecting)
 
         try {

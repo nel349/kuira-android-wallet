@@ -146,6 +146,7 @@ object LedgerModule {
         proofServerClient: ProofServerClient,
         indexerClient: IndexerClient,
         serializer: TransactionSerializer,
+        utxoManager: com.midnight.kuira.core.indexer.utxo.UtxoManager,
         dustActionsBuilder: DustActionsBuilder,
         dustRepository: com.midnight.kuira.core.indexer.repository.DustRepository
     ): TransactionSubmitter {
@@ -154,6 +155,7 @@ object LedgerModule {
             proofServerClient = proofServerClient,
             indexerClient = indexerClient,
             serializer = serializer,
+            utxoManager = utxoManager,
             dustActionsBuilder = dustActionsBuilder,
             dustRepository = dustRepository
         )

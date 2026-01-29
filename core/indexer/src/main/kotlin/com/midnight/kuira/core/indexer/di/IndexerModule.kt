@@ -183,11 +183,12 @@ object IndexerModule {
      */
     @Provides
     fun provideSubscriptionManagerFactory(
+        @ApplicationContext context: Context,
         indexerClient: IndexerClient,
         utxoManager: UtxoManager,
         syncStateManager: SyncStateManager
     ): SubscriptionManagerFactory {
-        return SubscriptionManagerFactory(indexerClient, utxoManager, syncStateManager)
+        return SubscriptionManagerFactory(context, indexerClient, utxoManager, syncStateManager)
     }
 }
 
@@ -197,6 +198,7 @@ object IndexerModule {
  * Use this instead of directly injecting SubscriptionManager to avoid singleton scope issues.
  */
 class SubscriptionManagerFactory(
+    private val context: Context,
     private val indexerClient: IndexerClient,
     private val utxoManager: UtxoManager,
     private val syncStateManager: SyncStateManager
@@ -208,6 +210,6 @@ class SubscriptionManagerFactory(
      * Collect the subscription flow in a ViewModel-scoped coroutine.
      */
     fun create(): SubscriptionManager {
-        return SubscriptionManager(indexerClient, utxoManager, syncStateManager)
+        return SubscriptionManager(context, indexerClient, utxoManager, syncStateManager)
     }
 }

@@ -3,6 +3,7 @@ package com.midnight.kuira.core.ledger.api
 import android.util.Log
 import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
+import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import com.midnight.kuira.core.ledger.fee.DustActionsBuilder
 import com.midnight.kuira.core.ledger.model.Intent
 import kotlinx.coroutines.flow.Flow
@@ -53,6 +54,7 @@ class TransactionSubmitter(
     private val proofServerClient: ProofServerClient,
     private val indexerClient: IndexerClient,
     private val serializer: TransactionSerializer,
+    private val utxoManager: UtxoManager,
     private val dustActionsBuilder: DustActionsBuilder? = null,
     private val dustRepository: com.midnight.kuira.core.indexer.repository.DustRepository? = null
 ) {
@@ -132,10 +134,32 @@ class TransactionSubmitter(
         Log.d(TAG, "✅ Transaction finalized: ${finalizedTxHex.length} hex chars")
         Log.d(TAG, "Tag should now contain: proof, pedersen-schnorr[v1]")
 
+        // Step 2.6: Get the Midnight transaction hash (for confirmation tracking)
+        // This is different from the extrinsic hash returned by the node!
+        val ffiSerializer = serializer as? FfiTransactionSerializer
+        val midnightTxHash = ffiSerializer?.getTransactionHash(finalizedTxHex)
+        if (midnightTxHash != null) {
+            Log.d(TAG, "Midnight transaction hash: $midnightTxHash")
+        } else {
+            Log.w(TAG, "Could not get Midnight transaction hash - will use extrinsic hash for confirmation")
+        }
+
+        // Track which UTXOs are being spent (for error recovery)
+        val spentUtxoIds = signedIntent.guaranteedUnshieldedOffer?.inputs?.map { it.identifier() } ?: emptyList()
+
         // Step 3: Submit finalized transaction to node
-        val txHash = try {
+        val extrinsicHash = try {
             nodeRpcClient.submitTransaction(finalizedTxHex)
         } catch (e: TransactionRejected) {
+            // Check if this is a stale UTXO error (error 115)
+            if (e.isStaleUtxo) {
+                Log.w(TAG, "⚠️ Stale UTXO detected (error 115) - UTXOs were already spent")
+                return SubmissionResult.StaleUtxo(
+                    failedUtxoIds = spentUtxoIds,
+                    reason = "Some UTXOs were already spent. Wallet is syncing to get latest balance."
+                )
+            }
+
             return SubmissionResult.Failed(
                 txHash = e.txHash,
                 reason = "Transaction rejected by node: ${e.reason}"
@@ -147,15 +171,28 @@ class TransactionSubmitter(
             )
         }
 
-        // Step 3: Wait for confirmation via indexer subscription
+        Log.d(TAG, "✅ Transaction submitted with extrinsic hash: $extrinsicHash")
+
+        // CRITICAL: Mark input UTXOs as SPENT immediately!
+        // The node accepted the transaction, so these UTXOs are gone.
+        // Don't wait for confirmation - if the user retries before confirmation,
+        // they'd try to spend the same UTXOs again (error 115).
+        Log.d(TAG, "Marking ${spentUtxoIds.size} input UTXOs as SPENT (node accepted transaction)")
+        utxoManager.markUtxosAsSpent(spentUtxoIds)
+        Log.d(TAG, "✅ Input UTXOs marked as SPENT")
+
+        // Use Midnight tx hash for confirmation (indexer uses this hash, not extrinsic hash)
+        val confirmationHash = midnightTxHash ?: extrinsicHash
+
+        // Step 4: Wait for confirmation via indexer subscription
         return try {
             withTimeout(timeoutMs) {
-                waitForConfirmation(fromAddress, txHash)
+                waitForConfirmation(fromAddress, confirmationHash)
             }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             // Timeout - transaction may still be pending
             SubmissionResult.Pending(
-                txHash = txHash,
+                txHash = confirmationHash,
                 reason = "Confirmation timeout after ${timeoutMs}ms (transaction may still be processing)"
             )
         }
@@ -167,7 +204,13 @@ class TransactionSubmitter(
      * **Strategy:**
      * - Subscribe to unshielded transactions for sender address
      * - Filter for matching transaction hash
+     * - When found, update local UTXO database (CRITICAL!)
      * - Return when found
+     *
+     * **IMPORTANT:** This function MUST update UTXOs when it finds the transaction.
+     * The SubscriptionManager (in BalanceViewModel) might not be running or might
+     * miss the transaction due to timing. This ensures UTXOs are always updated
+     * when a transaction is confirmed.
      *
      * @param address Sender's address
      * @param expectedTxHash Expected transaction hash
@@ -177,6 +220,8 @@ class TransactionSubmitter(
         address: String,
         expectedTxHash: String
     ): SubmissionResult {
+        Log.d(TAG, "Waiting for confirmation of tx: $expectedTxHash")
+
         // Subscribe to transactions for this address
         val txFlow: Flow<UnshieldedTransactionUpdate> = indexerClient
             .subscribeToUnshieldedTransactions(address)
@@ -186,15 +231,26 @@ class TransactionSubmitter(
             .filter { it is UnshieldedTransactionUpdate.Transaction }
             .map { it as UnshieldedTransactionUpdate.Transaction }
             .firstOrNull { tx ->
-                tx.transaction.hash.removePrefix("0x") == expectedTxHash
+                val matches = tx.transaction.hash.removePrefix("0x") == expectedTxHash
+                if (matches) {
+                    Log.d(TAG, "✅ Found matching transaction: ${tx.transaction.hash}")
+                }
+                matches
             }
 
         return if (update != null) {
+            // CRITICAL: Update local UTXO database!
+            // This ensures UTXOs are updated even if SubscriptionManager misses the transaction.
+            Log.d(TAG, "Processing confirmed transaction: created=${update.createdUtxos.size}, spent=${update.spentUtxos.size}")
+            utxoManager.processUpdate(update)
+            Log.d(TAG, "✅ UTXOs updated in local database")
+
             SubmissionResult.Success(
                 txHash = expectedTxHash,
                 blockHeight = update.transaction.id.toLong()  // Approximate block
             )
         } else {
+            Log.w(TAG, "Transaction not found in indexer stream: $expectedTxHash")
             SubmissionResult.Failed(
                 txHash = expectedTxHash,
                 reason = "Transaction not found in indexer stream"
@@ -382,12 +438,34 @@ class TransactionSubmitter(
 
             Log.d(TAG, "✅ Transaction sealed: ${sealedTxHex.length} hex chars")
 
+            // Step 9.5: Get the Midnight transaction hash (for confirmation tracking)
+            // This is different from the extrinsic hash returned by the node!
+            val midnightTxHash = ffiSerializer.getTransactionHash(sealedTxHex)
+            if (midnightTxHash != null) {
+                Log.d(TAG, "Midnight transaction hash: $midnightTxHash")
+            } else {
+                Log.w(TAG, "Could not get Midnight transaction hash - will use extrinsic hash for confirmation")
+            }
+
+            // Track which UTXOs are being spent (for error recovery)
+            val spentUtxoIds = inputs.map { it.identifier() }
+
             // Step 10: Submit to node
-            val txHash = try {
+            val extrinsicHash = try {
                 nodeRpcClient.submitTransaction(sealedTxHex)
             } catch (e: TransactionRejected) {
                 // Rollback dust actions on node rejection
                 dustActionsBuilder.rollbackDustActions(dustActions)
+
+                // Check if this is a stale UTXO error (error 115)
+                if (e.isStaleUtxo) {
+                    Log.w(TAG, "⚠️ Stale UTXO detected (error 115) - UTXOs were already spent")
+                    return SubmissionResult.StaleUtxo(
+                        failedUtxoIds = spentUtxoIds,
+                        reason = "Some UTXOs were already spent. Wallet is syncing to get latest balance."
+                    )
+                }
+
                 return SubmissionResult.Failed(
                     txHash = e.txHash,
                     reason = "Transaction rejected by node: ${e.reason}"
@@ -401,18 +479,29 @@ class TransactionSubmitter(
                 )
             }
 
-            Log.d(TAG, "✅ Transaction submitted: $txHash")
+            Log.d(TAG, "✅ Transaction submitted with extrinsic hash: $extrinsicHash")
+
+            // CRITICAL: Mark input UTXOs as SPENT immediately!
+            // The node accepted the transaction, so these UTXOs are gone.
+            // Don't wait for confirmation - if the user retries before confirmation,
+            // they'd try to spend the same UTXOs again (error 115).
+            Log.d(TAG, "Marking ${spentUtxoIds.size} input UTXOs as SPENT (node accepted transaction)")
+            utxoManager.markUtxosAsSpent(spentUtxoIds)
+            Log.d(TAG, "✅ Input UTXOs marked as SPENT")
+
+            // Use Midnight tx hash for confirmation (indexer uses this hash, not extrinsic hash)
+            val confirmationHash = midnightTxHash ?: extrinsicHash
 
             // Step 11: Wait for confirmation
             val result = try {
                 withTimeout(timeoutMs) {
-                    waitForConfirmation(fromAddress, txHash)
+                    waitForConfirmation(fromAddress, confirmationHash)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 // Timeout - transaction may still be pending
                 // Don't rollback dust actions yet (might still confirm)
                 SubmissionResult.Pending(
-                    txHash = txHash,
+                    txHash = confirmationHash,
                     reason = "Confirmation timeout after ${timeoutMs}ms (transaction may still be processing)"
                 )
             }
@@ -441,6 +530,11 @@ class TransactionSubmitter(
                 is SubmissionResult.Pending -> {
                     // Timeout: leave coins as PENDING for manual resolution
                     Log.w(TAG, "⏳ Transaction pending - dust coins left in PENDING state")
+                }
+                is SubmissionResult.StaleUtxo -> {
+                    // Stale UTXO: rollback dust coins (already done in catch block)
+                    // The caller will handle UTXO reconciliation
+                    Log.w(TAG, "⚠️ Stale UTXO - caller will reconcile UTXOs")
                 }
             }
 
@@ -541,6 +635,23 @@ class TransactionSubmitter(
         data class Pending(
             val txHash: String,
             val reason: String
+        ) : SubmissionResult()
+
+        /**
+         * Transaction failed because UTXO was already spent (stale local data).
+         *
+         * **Recovery:**
+         * 1. Mark failed UTXOs as SPENT in local database
+         * 2. Trigger background resync for this address
+         * 3. Update UI with new balance
+         * 4. User can retry with remaining UTXOs
+         *
+         * @property failedUtxoIds List of UTXO IDs that were stale (intentHash:outputNo format)
+         * @property reason Human-readable explanation
+         */
+        data class StaleUtxo(
+            val failedUtxoIds: List<String>,
+            val reason: String = "Some UTXOs were already spent. Wallet is syncing to get latest balance."
         ) : SubmissionResult()
     }
 

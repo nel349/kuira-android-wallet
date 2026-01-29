@@ -64,22 +64,55 @@ class UtxoManager(
         val createdCount = update.createdUtxos.size
         val spentCount = update.spentUtxos.size
         val status = update.status()
+        val txHash = update.transaction.hash
+
+        // CRITICAL: Set transactionHash on CREATED UTXOs - this is the REAL identifier!
+        // For created UTXOs, txHash is THIS transaction's hash.
+        val createdUtxosWithTxHash = update.createdUtxos.map { it.withTransactionHash(txHash) }
+
+        // Log what we received for debugging
+        android.util.Log.d("UtxoManager", "═══ Processing tx ${txHash.take(16)}... (id=${update.transaction.id}) ═══")
+        android.util.Log.d("UtxoManager", "Status: $status, created=${createdCount}, spent=${spentCount}")
+        createdUtxosWithTxHash.forEach { utxo ->
+            android.util.Log.d("UtxoManager", "  CREATED: ${utxo.identifier()} = ${utxo.value} (intentHash=${utxo.intentHash.take(16)}...)")
+        }
+        update.spentUtxos.forEach { utxo ->
+            // Spent UTXOs use intentHash from subscription (their creating tx's intent hash)
+            android.util.Log.d("UtxoManager", "  SPENT: intentHash=${utxo.intentHash.take(16)}...:${utxo.outputIndex} = ${utxo.value}")
+        }
 
         // Handle based on transaction status
         when (status) {
             TransactionStatus.SUCCESS, TransactionStatus.PARTIAL_SUCCESS -> {
                 // Insert created UTXOs as AVAILABLE
+                // Note: Uses REPLACE strategy so if UTXO already exists, it gets updated
                 if (createdCount > 0) {
-                    val entities = update.createdUtxos.map { utxo ->
+                    val entities = createdUtxosWithTxHash.map { utxo ->
                         UnshieldedUtxoEntity.fromUtxo(utxo, state = UtxoState.AVAILABLE)
                     }
+                    android.util.Log.d("UtxoManager", "Inserting ${entities.size} UTXOs: ${entities.map { it.id }}")
                     utxoDao.insertUtxos(entities)
                 }
 
                 // Mark spent UTXOs as SPENT (permanent)
+                // For spent UTXOs, we need to find them by intentHash (what the subscription returns)
+                // then mark them by their id (which is transactionHash:outputIndex)
                 if (spentCount > 0) {
-                    val utxoIds = update.spentUtxos.map { it.identifier() }
-                    utxoDao.markAsSpent(utxoIds)
+                    val utxoIds = update.spentUtxos.mapNotNull { spentUtxo ->
+                        // Find the UTXO by its intentHash+outputIndex
+                        val existing = utxoDao.getUtxoByIntentHash(spentUtxo.intentHash, spentUtxo.outputIndex)
+                        if (existing != null) {
+                            android.util.Log.d("UtxoManager", "  Found spent UTXO: ${existing.id}")
+                            existing.id
+                        } else {
+                            // UTXO not in our database - might be from before we started syncing
+                            android.util.Log.w("UtxoManager", "  Spent UTXO not found: ${spentUtxo.intentHash.take(16)}...:${spentUtxo.outputIndex}")
+                            null
+                        }
+                    }
+                    if (utxoIds.isNotEmpty()) {
+                        utxoDao.markAsSpent(utxoIds)
+                    }
                 }
             }
 
@@ -90,8 +123,12 @@ class UtxoManager(
                 // If there were spent UTXOs, unlock them (PENDING → AVAILABLE)
                 // This allows them to be used in future transactions
                 if (spentCount > 0) {
-                    val utxoIds = update.spentUtxos.map { it.identifier() }
-                    utxoDao.markAsAvailable(utxoIds)
+                    val utxoIds = update.spentUtxos.mapNotNull { spentUtxo ->
+                        utxoDao.getUtxoByIntentHash(spentUtxo.intentHash, spentUtxo.outputIndex)?.id
+                    }
+                    if (utxoIds.isNotEmpty()) {
+                        utxoDao.markAsAvailable(utxoIds)
+                    }
                 }
             }
         }
@@ -283,6 +320,10 @@ class UtxoManager(
     ): UtxoSelector.SelectionResult {
         // Step 1: SELECT available UTXOs (sorted by value, smallest first)
         val availableUtxos = utxoDao.getUnspentUtxosForTokenSorted(address, tokenType)
+        android.util.Log.d("UtxoManager", "selectAndLockUtxos: Found ${availableUtxos.size} AVAILABLE UTXOs for token $tokenType")
+        availableUtxos.forEach { utxo ->
+            android.util.Log.d("UtxoManager", "  AVAILABLE UTXO: ${utxo.id} = ${utxo.value} (state=${utxo.state})")
+        }
 
         // Step 2: Perform coin selection (smallest-first)
         val selector = UtxoSelector()
@@ -291,7 +332,10 @@ class UtxoManager(
         // Step 3: If successful, UPDATE selected UTXOs to PENDING
         if (selectionResult is UtxoSelector.SelectionResult.Success) {
             val utxoIds = selectionResult.selectedUtxos.map { it.id }
+            android.util.Log.d("UtxoManager", "Selected ${utxoIds.size} UTXOs: $utxoIds")
             utxoDao.markAsPending(utxoIds)
+        } else {
+            android.util.Log.d("UtxoManager", "Coin selection failed: $selectionResult")
         }
 
         // All three steps completed atomically (no other thread can interfere)
@@ -372,7 +416,9 @@ class UtxoManager(
      */
     suspend fun markUtxosAsSpent(utxoIds: List<String>) {
         if (utxoIds.isNotEmpty()) {
+            android.util.Log.d("UtxoManager", "Marking ${utxoIds.size} UTXOs as SPENT: $utxoIds")
             utxoDao.markAsSpent(utxoIds)
+            android.util.Log.d("UtxoManager", "✅ UTXOs marked as SPENT")
         }
     }
 

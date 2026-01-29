@@ -11,26 +11,38 @@ import com.midnight.kuira.core.indexer.model.Utxo
  *
  * Stores UTXOs (Unspent Transaction Outputs) in local database for balance calculation.
  *
- * Primary key is composite of intentHash + outputIndex (unique identifier).
+ * Primary key is composite of transactionHash + outputIndex (unique identifier).
  * Indexed on owner (address) for fast balance queries.
+ *
+ * CRITICAL: Uses transactionHash (not intentHash) because that's how the blockchain
+ * identifies UTXOs. intentHash is a different value from transactionHash!
  */
 @Entity(
     tableName = "unshielded_utxos",
     indices = [
         Index(value = ["owner"]),
         Index(value = ["token_type"]),
-        Index(value = ["state"])
+        Index(value = ["state"]),
+        Index(value = ["intent_hash", "output_index"])  // For finding spent UTXOs
     ]
 )
 data class UnshieldedUtxoEntity(
     /**
-     * Unique identifier: "intentHash:outputIndex"
+     * Unique identifier: "transactionHash:outputIndex"
      */
     @PrimaryKey
     val id: String,
 
     /**
      * Transaction hash that created this UTXO.
+     * This is the REAL identifier used by the blockchain.
+     */
+    @ColumnInfo(name = "transaction_hash")
+    val transactionHash: String,
+
+    /**
+     * Intent hash (kept for reference but NOT used for identification).
+     * Different from transactionHash - a transaction can have multiple intents.
      */
     @ColumnInfo(name = "intent_hash")
     val intentHash: String,
@@ -99,10 +111,18 @@ data class UnshieldedUtxoEntity(
     companion object {
         /**
          * Convert domain model to entity.
+         *
+         * CRITICAL: The Utxo must have transactionHash set via withTransactionHash()
+         * before calling this method! The identifier uses transactionHash, not intentHash.
          */
         fun fromUtxo(utxo: Utxo, state: UtxoState = UtxoState.AVAILABLE): UnshieldedUtxoEntity {
+            require(utxo.transactionHash.isNotBlank()) {
+                "Utxo.transactionHash must be set before creating entity. " +
+                "Call utxo.withTransactionHash(txHash) first."
+            }
             return UnshieldedUtxoEntity(
-                id = utxo.identifier(),
+                id = utxo.identifier(),  // Now uses transactionHash:outputIndex
+                transactionHash = utxo.transactionHash,
                 intentHash = utxo.intentHash,
                 outputIndex = utxo.outputIndex,
                 owner = utxo.owner,
@@ -128,7 +148,8 @@ data class UnshieldedUtxoEntity(
             intentHash = intentHash,
             outputIndex = outputIndex,
             ctime = ctime,
-            registeredForDustGeneration = registeredForDustGeneration
+            registeredForDustGeneration = registeredForDustGeneration,
+            transactionHash = transactionHash
         )
     }
 }

@@ -113,12 +113,22 @@ interface UnshieldedUtxoDao {
     suspend fun getUnspentUtxosForToken(address: String, tokenType: String): List<UnshieldedUtxoEntity>
 
     /**
-     * Get UTXO by ID (intentHash:outputIndex).
+     * Get UTXO by ID (transactionHash:outputIndex).
      *
      * Used to check if UTXO already exists before inserting.
      */
     @Query("SELECT * FROM unshielded_utxos WHERE id = :utxoId")
     suspend fun getUtxoById(utxoId: String): UnshieldedUtxoEntity?
+
+    /**
+     * Get UTXO by intentHash and outputIndex.
+     *
+     * Used when processing spentUtxos from the subscription, which returns
+     * intentHash instead of transactionHash. We need to find the UTXO's id
+     * (which is transactionHash:outputIndex) to mark it as spent.
+     */
+    @Query("SELECT * FROM unshielded_utxos WHERE intent_hash = :intentHash AND output_index = :outputIndex")
+    suspend fun getUtxoByIntentHash(intentHash: String, outputIndex: Int): UnshieldedUtxoEntity?
 
     /**
      * Delete all UTXOs for an address.

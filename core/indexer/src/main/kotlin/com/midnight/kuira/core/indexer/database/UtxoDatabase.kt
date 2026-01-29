@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         UnshieldedUtxoEntity::class,
         DustTokenEntity::class
     ],
-    version = 4,  // Bumped from 3 to 4 to add dust_tokens table
+    version = 6,  // Bumped to 6: Added index on intent_hash+output_index for spent UTXO lookup
     exportSchema = false
 )
 abstract class UtxoDatabase : RoomDatabase() {
@@ -54,6 +54,25 @@ abstract class UtxoDatabase : RoomDatabase() {
                 DATABASE_NAME
             )
                 .fallbackToDestructiveMigration() // TODO: Add proper migrations for production
+                .addCallback(object : RoomDatabase.Callback() {
+                    override fun onDestructiveMigration(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                        // CRITICAL: When database is wiped by destructive migration,
+                        // we must also clear the sync state. Otherwise the subscription
+                        // will resume from the last saved transaction ID instead of
+                        // replaying all history to repopulate the UTXO table.
+                        //
+                        // This is done asynchronously via a coroutine since we can't
+                        // call suspend functions directly from the callback.
+                        android.util.Log.w("UtxoDatabase", "Destructive migration detected - sync state needs to be cleared!")
+                        // Note: SyncStateManager clearing must be done by the caller
+                        // who has access to the Context for DataStore.
+                        // Set a flag that the app can check on startup.
+                        context.getSharedPreferences("utxo_db_flags", Context.MODE_PRIVATE)
+                            .edit()
+                            .putBoolean("needs_full_resync", true)
+                            .apply()
+                    }
+                })
                 .enableMultiInstanceInvalidation() // Allow multiple processes to share database
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // Enable WAL for better concurrency
                 .build()

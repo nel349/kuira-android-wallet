@@ -194,9 +194,16 @@ class NodeRpcClientImpl(
 
                 // Special handling for invalid transaction (code 1010)
                 if (error.code == 1010) {
+                    // Parse custom error code from data field (e.g., "Custom error: 115")
+                    val customErrorCode = error.data?.let { data ->
+                        val match = Regex("Custom error: (\\d+)").find(data)
+                        match?.groupValues?.get(1)?.toIntOrNull()
+                    }
+
                     throw TransactionRejected(
                         reason = error.message,
-                        txHash = null
+                        txHash = null,
+                        customErrorCode = customErrorCode
                     )
                 }
 

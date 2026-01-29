@@ -1,7 +1,9 @@
 package com.midnight.kuira.feature.send
 
+import com.midnight.kuira.core.indexer.di.SubscriptionManagerFactory
 import com.midnight.kuira.core.indexer.model.TokenBalance
 import com.midnight.kuira.core.indexer.repository.BalanceRepository
+import com.midnight.kuira.core.indexer.repository.DustRepository
 import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import com.midnight.kuira.core.ledger.api.TransactionSerializer
 import com.midnight.kuira.core.ledger.api.TransactionSubmitter
@@ -40,6 +42,8 @@ class SendViewModelTest {
     private lateinit var transactionSubmitter: TransactionSubmitter
     private lateinit var serializer: TransactionSerializer
     private lateinit var indexerClient: com.midnight.kuira.core.indexer.api.IndexerClient
+    private lateinit var dustRepository: DustRepository
+    private lateinit var subscriptionManagerFactory: SubscriptionManagerFactory
     private lateinit var viewModel: SendViewModel
 
     private val testDispatcher = UnconfinedTestDispatcher()
@@ -53,13 +57,17 @@ class SendViewModelTest {
         transactionSubmitter = mock()
         serializer = mock()
         indexerClient = mock()
+        dustRepository = mock()
+        subscriptionManagerFactory = mock()
 
         viewModel = SendViewModel(
             balanceRepository = balanceRepository,
             utxoManager = utxoManager,
             transactionSubmitter = transactionSubmitter,
             serializer = serializer,
-            indexerClient = indexerClient
+            indexerClient = indexerClient,
+            dustRepository = dustRepository,
+            subscriptionManagerFactory = subscriptionManagerFactory
         )
     }
 
@@ -197,12 +205,17 @@ class SendViewModelTest {
 
     @Test
     fun `reset returns to Idle state`() = runTest {
+        // Mock balance repository for reset
+        whenever(balanceRepository.observeBalances(TEST_ADDRESS)).thenReturn(
+            flowOf(emptyList())
+        )
+
         // Set to error state
         viewModel.loadBalance("")
         assertTrue(viewModel.state.value is SendUiState.Error)
 
-        // Reset
-        viewModel.reset()
+        // Reset with valid address
+        viewModel.reset(TEST_ADDRESS)
 
         val state = viewModel.state.value
         assertTrue(state is SendUiState.Idle)
@@ -228,5 +241,13 @@ class SendViewModelTest {
 
         // Should show error
         assertTrue(viewModel.state.value is SendUiState.Error)
+    }
+
+    private companion object {
+        // Valid test address generated from known public key
+        val TEST_ADDRESS = com.midnight.kuira.core.crypto.address.Bech32m.encode(
+            "mn_addr_preview",
+            ByteArray(32) { it.toByte() }
+        )
     }
 }

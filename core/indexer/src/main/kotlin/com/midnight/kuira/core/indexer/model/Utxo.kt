@@ -13,10 +13,11 @@ import java.math.BigInteger
  * @property owner Address that owns this UTXO (Bech32m encoded UserAddress)
  * @property ownerPublicKey Public key of the owner (hex-encoded, 33 bytes compressed). Null if not from our wallet.
  * @property tokenType Token type identifier (e.g., "DUST")
- * @property intentHash Transaction hash that created this UTXO
+ * @property intentHash Intent hash (from GraphQL, kept for reference)
  * @property outputIndex Index of this output in the transaction
  * @property ctime Creation time (Unix timestamp in seconds)
  * @property registeredForDustGeneration Whether this UTXO is registered for dust generation
+ * @property transactionHash Transaction hash that created this UTXO (set during sync, used for identifier)
  */
 @Serializable
 data class Utxo(
@@ -27,7 +28,11 @@ data class Utxo(
     val intentHash: String,
     val outputIndex: Int,
     val ctime: Long, // Unix timestamp in seconds
-    val registeredForDustGeneration: Boolean
+    val registeredForDustGeneration: Boolean,
+    // Transaction hash is set during sync from update.transaction.hash
+    // This is the REAL identifier used by the blockchain, not intentHash!
+    @kotlinx.serialization.Transient
+    val transactionHash: String = ""
 ) {
     init {
         require(value.isNotBlank()) { "Value cannot be blank" }
@@ -52,7 +57,16 @@ data class Utxo(
 
     /**
      * Unique identifier for this UTXO.
-     * Format: "intentHash:outputIndex"
+     * Format: "transactionHash:outputIndex"
+     *
+     * CRITICAL: Uses transactionHash (not intentHash) because that's how
+     * the blockchain identifies UTXOs. intentHash is different from transactionHash!
      */
-    fun identifier(): String = "$intentHash:$outputIndex"
+    fun identifier(): String = "$transactionHash:$outputIndex"
+
+    /**
+     * Create a copy with the transaction hash set.
+     * Called during sync when we have access to update.transaction.hash.
+     */
+    fun withTransactionHash(txHash: String): Utxo = copy(transactionHash = txHash)
 }

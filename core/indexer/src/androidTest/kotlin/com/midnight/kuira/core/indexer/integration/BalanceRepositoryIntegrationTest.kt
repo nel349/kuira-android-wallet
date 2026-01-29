@@ -144,6 +144,7 @@ class BalanceRepositoryIntegrationTest {
     fun basicScenario_loadUtxosFromIndexer_thenDatabasePopulated() = runTest(timeout = 90.seconds) {
         // Load real data via subscription (production code path)
         val utxoCount = TestDataLoader.loadFromIndexer(
+            context = context,
             indexerClient = indexerClient,
             utxoManager = utxoManager,
             syncStateManager = syncStateManager,
@@ -181,6 +182,7 @@ class BalanceRepositoryIntegrationTest {
     fun basicScenario_observeBalances_thenMatchesIndexerData() = runTest(timeout = 90.seconds) {
         // Load real data via subscription
         val utxoCount = TestDataLoader.loadFromIndexer(
+            context = context,
             indexerClient = indexerClient,
             utxoManager = utxoManager,
             syncStateManager = syncStateManager,
@@ -235,6 +237,7 @@ class BalanceRepositoryIntegrationTest {
     fun basicScenario_observeTotalBalance_thenSumsAllTokens() = runTest(timeout = 90.seconds) {
         // Load real data via subscription
         val utxoCount = TestDataLoader.loadFromIndexer(
+            context = context,
             indexerClient = indexerClient,
             utxoManager = utxoManager,
             syncStateManager = syncStateManager,

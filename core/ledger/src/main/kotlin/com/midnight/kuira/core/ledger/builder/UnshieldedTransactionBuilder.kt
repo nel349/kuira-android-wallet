@@ -239,7 +239,7 @@ class UnshieldedTransactionBuilder(
  */
 private fun UnshieldedUtxoEntity.toUtxoSpend(ownerPublicKey: String): UtxoSpend {
     return UtxoSpend(
-        intentHash = this.intentHash,
+        transactionHash = this.transactionHash,  // CRITICAL: Use transactionHash, not intentHash!
         outputNo = this.outputIndex,
         value = BigInteger(this.value),
         owner = this.owner,

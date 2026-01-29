@@ -178,7 +178,7 @@ class FfiTransactionSerializer : TransactionSerializer {
      *   "value": "1000000",
      *   "owner": "hex-encoded-verifying-key",
      *   "type": "hex-encoded-token-type",
-     *   "intent_hash": "hex-encoded-intent-hash",
+     *   "intent_hash": "hex-encoded-transaction-hash",  // NOTE: Field name is "intent_hash" for Rust compatibility, but value is transactionHash!
      *   "output_no": 0
      * }]
      * ```
@@ -190,7 +190,10 @@ class FfiTransactionSerializer : TransactionSerializer {
                 put("value", input.value.toString())
                 put("owner", input.ownerPublicKey)  // Hex-encoded public key (32 bytes BIP-340 x-only)
                 put("type", input.tokenType)  // Already hex string (64 chars)
-                put("intent_hash", input.intentHash)  // Already hex string
+                // CRITICAL: The Rust code expects "intent_hash" field name, but the VALUE
+                // must be the transactionHash (not intentHash) because that's how the
+                // blockchain identifies UTXOs!
+                put("intent_hash", input.transactionHash)
                 put("output_no", input.outputNo)
             }
             jsonArray.put(jsonObject)
@@ -416,6 +419,26 @@ class FfiTransactionSerializer : TransactionSerializer {
      * @return Hex-encoded finalized (sealed) transaction, or null on error
      */
     private external fun nativeSealProvenTransaction(provenTxHex: String): String?
+
+    /**
+     * Get the Midnight transaction hash from a sealed transaction.
+     *
+     * This returns the hash that will appear in the indexer, NOT the extrinsic hash
+     * that the node RPC returns. These are different hashes:
+     * - Extrinsic hash: Hash of the Substrate extrinsic wrapper (from node RPC)
+     * - Midnight tx hash: Hash of the actual Midnight transaction (what indexer uses)
+     *
+     * @param sealedTxHex Hex-encoded sealed transaction
+     * @return Hex-encoded Midnight transaction hash, or null on error
+     */
+    fun getTransactionHash(sealedTxHex: String): String? {
+        return nativeGetTransactionHash(sealedTxHex)
+    }
+
+    /**
+     * JNI: Gets the Midnight transaction hash from a sealed transaction.
+     */
+    private external fun nativeGetTransactionHash(sealedTxHex: String): String?
 
     /**
      * DEPRECATED: Stub function for backward compatibility.

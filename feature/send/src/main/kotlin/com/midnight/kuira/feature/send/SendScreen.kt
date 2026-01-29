@@ -193,11 +193,11 @@ fun SendScreen(
                     amount = currentState.amountSent,
                     recipient = currentState.recipientAddress,
                     formatter = formatter,
-                    onReset = { viewModel.reset() }
+                    onReset = { viewModel.reset(address) }
                 )
                 is SendUiState.Error -> ErrorCard(
                     message = currentState.message,
-                    onRetry = { viewModel.reset() }
+                    onRetry = { viewModel.reset(address) }
                 )
                 is SendUiState.Idle -> {} // No extra display needed
             }
@@ -516,3 +516,4 @@ private fun ErrorCard(
         }
     }
 }
+

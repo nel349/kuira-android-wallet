@@ -13,25 +13,17 @@ import java.math.BigInteger
  * **File:** `midnight-ledger/ledger/src/structure.rs`
  *
  * **Purpose:**
- * - References an existing UTXO by intentHash and outputNo
+ * - References an existing UTXO by transactionHash and outputNo
  * - Specifies the owner address (for signature verification)
  * - Includes value and token type for balancing
  *
- * **Midnight SDK Equivalent:**
- * ```typescript
- * interface UtxoSpend {
- *   intentHash: string;      // Hash of the intent that created this UTXO
- *   outputNo: number;        // Output index in that intent
- *   value: bigint;           // Amount being spent
- *   owner: UnshieldedAddress; // Owner's address (for signing)
- *   tokenType: TokenType;    // Token being spent
- * }
- * ```
+ * **CRITICAL:** Uses transactionHash (not intentHash) because that's how the
+ * blockchain identifies UTXOs. intentHash is a different value from transactionHash!
  *
  * **Usage in Transaction:**
  * ```kotlin
  * val input = UtxoSpend(
- *     intentHash = "0x123...",
+ *     transactionHash = "87eb8bd03bfb2cd7...",  // Hash of creating transaction
  *     outputNo = 0,
  *     value = BigInteger("1000000"),  // 1.0 NIGHT
  *     owner = "mn_addr_undeployed1...",
@@ -39,15 +31,15 @@ import java.math.BigInteger
  * )
  * ```
  *
- * @property intentHash Hash of the intent that created this UTXO (hex string)
- * @property outputNo Output index in the creating intent (0-based)
+ * @property transactionHash Hash of the transaction that created this UTXO (hex string)
+ * @property outputNo Output index in the creating transaction (0-based)
  * @property value Amount being spent (in smallest units)
  * @property owner Owner's unshielded address (Bech32m format, for display)
  * @property ownerPublicKey Owner's BIP-340 x-only public key (hex-encoded, 32 bytes, for signing)
  * @property tokenType Token type identifier (hex string, 64 chars)
  */
 data class UtxoSpend(
-    val intentHash: String,
+    val transactionHash: String,
     val outputNo: Int,
     val value: BigInteger,
     val owner: String,
@@ -55,7 +47,7 @@ data class UtxoSpend(
     val tokenType: String
 ) {
     init {
-        require(intentHash.isNotBlank()) { "Intent hash cannot be blank" }
+        require(transactionHash.isNotBlank()) { "Transaction hash cannot be blank" }
         require(outputNo >= 0) { "Output number must be non-negative, got: $outputNo" }
         require(value >= BigInteger.ZERO) { "Value must be non-negative, got: $value" }
         require(owner.isNotBlank()) { "Owner address cannot be blank" }
@@ -68,11 +60,11 @@ data class UtxoSpend(
     /**
      * Unique identifier for this UTXO.
      *
-     * **Format:** `intentHash:outputNo`
+     * **Format:** `transactionHash:outputNo`
      *
      * Used for database lookups and UTXO tracking.
      */
-    fun identifier(): String = "$intentHash:$outputNo"
+    fun identifier(): String = "$transactionHash:$outputNo"
 
     companion object {
         /**

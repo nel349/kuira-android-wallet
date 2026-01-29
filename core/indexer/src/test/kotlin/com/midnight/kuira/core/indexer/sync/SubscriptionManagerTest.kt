@@ -1,5 +1,7 @@
 package com.midnight.kuira.core.indexer.sync
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.TransactionStatus
 import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
@@ -25,6 +27,7 @@ import org.junit.Test
  */
 class SubscriptionManagerTest {
 
+    private lateinit var context: Context
     private lateinit var indexerClient: IndexerClient
     private lateinit var utxoManager: UtxoManager
     private lateinit var syncStateManager: SyncStateManager
@@ -34,14 +37,27 @@ class SubscriptionManagerTest {
 
     @Before
     fun setup() {
+        context = mockk()
         indexerClient = mockk()
         utxoManager = mockk()
         syncStateManager = mockk()
-        subscriptionManager = SubscriptionManager(indexerClient, utxoManager, syncStateManager)
+
+        // Mock SharedPreferences for resync check
+        val mockPrefs = mockk<SharedPreferences>()
+        val mockEditor = mockk<SharedPreferences.Editor>()
+        every { context.getSharedPreferences(any(), any()) } returns mockPrefs
+        every { mockPrefs.getBoolean(any(), any()) } returns false
+        every { mockPrefs.edit() } returns mockEditor
+        every { mockEditor.putBoolean(any(), any()) } returns mockEditor
+        every { mockEditor.apply() } just Runs
+
+        subscriptionManager = SubscriptionManager(context, indexerClient, utxoManager, syncStateManager)
 
         // Default mock behavior
         coEvery { syncStateManager.getLastProcessedTransactionId(any()) } returns null
         coEvery { syncStateManager.saveLastProcessedTransactionId(any(), any()) } just Runs
+        coEvery { syncStateManager.clearSyncState(any()) } just Runs
+        coEvery { utxoManager.clearUtxos(any()) } just Runs
     }
 
     @After

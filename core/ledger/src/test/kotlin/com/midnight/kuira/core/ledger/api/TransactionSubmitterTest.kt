@@ -4,13 +4,16 @@ import com.midnight.kuira.core.indexer.api.IndexerClient
 import com.midnight.kuira.core.indexer.model.TransactionType
 import com.midnight.kuira.core.indexer.model.UnshieldedTransaction
 import com.midnight.kuira.core.indexer.model.UnshieldedTransactionUpdate
+import com.midnight.kuira.core.indexer.utxo.UtxoManager
 import com.midnight.kuira.core.ledger.model.Intent
 import com.midnight.kuira.core.ledger.model.UnshieldedOffer
 import com.midnight.kuira.core.ledger.model.UtxoOutput
 import com.midnight.kuira.core.ledger.model.UtxoSpend
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -27,6 +30,10 @@ class TransactionSubmitterTest {
         val nodeClient = mockk<NodeRpcClient>()
         val expectedTxHash = "a".repeat(64)  // 64 hex chars
         coEvery { nodeClient.submitTransaction(any()) } returns expectedTxHash
+
+        // Given: Mock proof server client that returns proven tx
+        val proofServerClient = mockk<ProofServerClient>()
+        coEvery { proofServerClient.proveTransaction(any()) } returns "proven_tx_hex"
 
         // Given: Mock indexer client that confirms transaction
         val indexerClient = mockk<IndexerClient>()
@@ -45,11 +52,23 @@ class TransactionSubmitterTest {
         )
         every { indexerClient.subscribeToUnshieldedTransactions(any(), any()) } returns flowOf(confirmedTx)
 
-        // Given: Transaction serializer
-        val serializer = StubTransactionSerializer()
+        // Given: Transaction serializer that returns sealed tx
+        val serializer = mockk<TransactionSerializer>()
+        every { serializer.serialize(any()) } returns "unproven_tx_hex"
+        every { serializer.sealProvenTransaction(any()) } returns "sealed_tx_hex"
+
+        // Given: Mock UTXO manager that processes updates
+        val utxoManager = mockk<UtxoManager>()
+        coEvery { utxoManager.processUpdate(any()) } just Runs
 
         // Given: Transaction submitter
-        val submitter = TransactionSubmitter(nodeClient, indexerClient, serializer)
+        val submitter = TransactionSubmitter(
+            nodeRpcClient = nodeClient,
+            proofServerClient = proofServerClient,
+            indexerClient = indexerClient,
+            serializer = serializer,
+            utxoManager = utxoManager
+        )
 
         // Given: Signed intent
         val signedIntent = createTestIntent()
@@ -79,14 +98,29 @@ class TransactionSubmitterTest {
             txHash = null
         )
 
+        // Given: Mock proof server client that returns proven tx
+        val proofServerClient = mockk<ProofServerClient>()
+        coEvery { proofServerClient.proveTransaction(any()) } returns "proven_tx_hex"
+
         // Given: Mock indexer (won't be called)
         val indexerClient = mockk<IndexerClient>(relaxed = true)
 
-        // Given: Transaction serializer
-        val serializer = StubTransactionSerializer()
+        // Given: Transaction serializer that returns sealed tx
+        val serializer = mockk<TransactionSerializer>()
+        every { serializer.serialize(any()) } returns "unproven_tx_hex"
+        every { serializer.sealProvenTransaction(any()) } returns "sealed_tx_hex"
+
+        // Given: Mock UTXO manager (won't be called due to node rejection)
+        val utxoManager = mockk<UtxoManager>(relaxed = true)
 
         // Given: Transaction submitter
-        val submitter = TransactionSubmitter(nodeClient, indexerClient, serializer)
+        val submitter = TransactionSubmitter(
+            nodeRpcClient = nodeClient,
+            proofServerClient = proofServerClient,
+            indexerClient = indexerClient,
+            serializer = serializer,
+            utxoManager = utxoManager
+        )
 
         // Given: Signed intent
         val signedIntent = createTestIntent()
@@ -111,14 +145,29 @@ class TransactionSubmitterTest {
         val expectedTxHash = "b".repeat(64)
         coEvery { nodeClient.submitTransaction(any()) } returns expectedTxHash
 
+        // Given: Mock proof server client that returns proven tx
+        val proofServerClient = mockk<ProofServerClient>()
+        coEvery { proofServerClient.proveTransaction(any()) } returns "proven_tx_hex"
+
         // Given: Mock indexer (won't be called)
         val indexerClient = mockk<IndexerClient>(relaxed = true)
 
-        // Given: Transaction serializer
-        val serializer = StubTransactionSerializer()
+        // Given: Transaction serializer that returns sealed tx
+        val serializer = mockk<TransactionSerializer>()
+        every { serializer.serialize(any()) } returns "unproven_tx_hex"
+        every { serializer.sealProvenTransaction(any()) } returns "sealed_tx_hex"
+
+        // Given: Mock UTXO manager (won't be called for submitOnly)
+        val utxoManager = mockk<UtxoManager>(relaxed = true)
 
         // Given: Transaction submitter
-        val submitter = TransactionSubmitter(nodeClient, indexerClient, serializer)
+        val submitter = TransactionSubmitter(
+            nodeRpcClient = nodeClient,
+            proofServerClient = proofServerClient,
+            indexerClient = indexerClient,
+            serializer = serializer,
+            utxoManager = utxoManager
+        )
 
         // Given: Signed intent
         val signedIntent = createTestIntent()
@@ -131,27 +180,6 @@ class TransactionSubmitterTest {
 
         // Verify: Node client was called
         coVerify { nodeClient.submitTransaction(any()) }
-    }
-
-    @Test
-    fun `serializer generates deterministic hex`() {
-        // Given: Serializer
-        val serializer = StubTransactionSerializer()
-
-        // Given: Test intent
-        val intent = createTestIntent()
-
-        // When: Serialize twice
-        val hex1 = serializer.serialize(intent)
-        val hex2 = serializer.serialize(intent)
-
-        // Then: Should be identical
-        assertEquals(hex1, hex2)
-
-        // Then: Should be valid hex
-        assertTrue(hex1.matches(Regex("^[0-9a-f]+$")))
-        assertTrue(hex1.length > 0)
-        assertTrue(hex1.length % 2 == 0)  // Even length
     }
 
     // ==================== Test Helpers ====================
